@@ -1,0 +1,19 @@
+{
+  "name": "RAÍZ — supervivencia en el bosque",
+  "short_name": "RAÍZ",
+  "description": "Un cuchillo, un ferrocerio y una cantimplora vacía. Supervivencia en el bosque.",
+  "start_url": "./?pwa=1",
+  "scope": "./",
+  "id": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0a0c08",
+  "theme_color": "#0a0c08",
+  "lang": "es",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
