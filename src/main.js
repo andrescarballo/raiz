@@ -1,187 +1,7 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Raíz — supervivencia en el bosque</title>
-<style>
-  :root{
-    --ink:#201d16; --ink-soft:#4a4436;
-    --paper:#d9d0b6; --paper-dark:#c3b795; --paper-line:#a99f80;
-    --moss:#5e6b3a; --ember:#b4531f; --frost:#6f96a1; --blood:#8c2f22;
-    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;overflow:hidden;background:#0a0c08;font-family:var(--serif);color:var(--ink)}
-  canvas{display:block}
-  #hud{position:fixed;inset:0;pointer-events:none;user-select:none}
+import * as THREE from 'three';
+import { storage } from './core/storage.js';
+import './styles.css';
 
-  /* --- tira de constantes vitales, estilo lápiz sobre papel --- */
-  #vitals{position:absolute;left:14px;bottom:14px;width:206px;padding:10px 12px 8px;
-    background:linear-gradient(180deg,var(--paper),var(--paper-dark));
-    box-shadow:0 6px 18px rgba(0,0,0,.45); border-radius:2px;
-    transform:rotate(-.5deg)}
-  .vital{margin:0 0 7px}
-  .vital:last-child{margin-bottom:0}
-  .vital .row{display:flex;justify-content:space-between;align-items:baseline;
-    font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
-  .vital .row b{font-family:var(--serif);font-size:12px;letter-spacing:0;color:var(--ink)}
-  .track{height:5px;margin-top:3px;background:repeating-linear-gradient(90deg,var(--paper-line) 0 1px,transparent 1px 4px)}
-  .fill{height:5px;background:var(--ink);transition:width .25s linear}
-  .fill.warn{background:var(--ember)}
-  .fill.cold{background:var(--frost)}
-  .fill.bad{background:var(--blood)}
-
-  /* --- cabecera derecha: parte del día --- */
-  #clockbox{position:absolute;right:14px;top:14px;text-align:right;color:var(--paper);
-    text-shadow:0 1px 3px rgba(0,0,0,.9)}
-  #clockbox .day{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;opacity:.75}
-  #clockbox .time{font-size:27px;line-height:1.05;letter-spacing:.02em}
-  #clockbox .weather{font-size:12.5px;opacity:.85;font-style:italic}
-
-  #cross{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;
-    border-radius:50%;background:rgba(255,255,255,.62);box-shadow:0 0 3px rgba(0,0,0,.8)}
-  #prompt{position:absolute;left:50%;top:calc(50% + 34px);transform:translateX(-50%);
-    color:var(--paper);font-size:15px;text-shadow:0 1px 4px rgba(0,0,0,.95);white-space:nowrap;opacity:0;transition:opacity .12s}
-  #prompt.on{opacity:1}
-  #prompt kbd{font-family:var(--mono);font-size:11px;border:1px solid rgba(255,255,255,.5);
-    border-radius:3px;padding:1px 5px;margin-right:6px}
-  #promptbar{position:absolute;left:50%;top:calc(50% + 58px);transform:translateX(-50%);
-    width:120px;height:3px;background:rgba(0,0,0,.5);display:none}
-  #promptbar i{display:block;height:100%;width:0;background:var(--ember)}
-
-  #pack{position:absolute;left:14px;top:14px;width:170px;padding:8px 11px 7px;pointer-events:auto;cursor:pointer;
-    background:linear-gradient(180deg,var(--paper),var(--paper-dark));box-shadow:0 6px 18px rgba(0,0,0,.45);
-    transform:rotate(.4deg);border-radius:2px;opacity:.92;transition:opacity .15s}
-  #pack:hover{opacity:1}
-  #pack.min{width:auto;padding:6px 10px}
-  #pack.min .it,#pack.min .empty{display:none}
-  #pack.min h2{margin:0}
-  #pack h2{margin:0 0 5px;font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;
-    color:var(--ink-soft);display:flex;justify-content:space-between;font-weight:400}
-  #pack .it{display:flex;justify-content:space-between;font-size:12.5px;line-height:1.42}
-  #pack .it b{font-family:var(--mono);font-size:11px;font-weight:400}
-  #pack .empty{font-size:12px;font-style:italic;color:var(--ink-soft)}
-  #dream{position:absolute;inset:0;background:#05070a;opacity:0;transition:opacity .5s;
-    display:flex;align-items:center;justify-content:center;color:var(--paper);font-size:20px;letter-spacing:.1em}
-  #dream.on{opacity:.94}
-  #hotbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;gap:6px;pointer-events:auto}
-  #hotbar .slot{position:relative;background:linear-gradient(180deg,var(--paper),var(--paper-dark));
-    border:0;border-radius:2px;padding:7px 11px 6px;font-family:var(--serif);font-size:12px;color:var(--ink);
-    box-shadow:0 4px 12px rgba(0,0,0,.45);opacity:.55;cursor:pointer;min-width:62px}
-  #hotbar .slot.sel{opacity:1;box-shadow:0 0 0 2px var(--ember),0 4px 12px rgba(0,0,0,.5)}
-  #hotbar .slot.no{opacity:.25}
-  #hotbar .slot i{display:block;font-family:var(--mono);font-style:normal;font-size:8.5px;
-    letter-spacing:.14em;color:var(--ink-soft)}
-  #log{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);width:min(440px,86vw);
-    text-align:center;display:flex;flex-direction:column-reverse;gap:3px}
-  #log div{color:var(--paper);font-size:13.5px;text-shadow:0 1px 4px rgba(0,0,0,.95);
-    animation:fade 6s forwards}
-  @keyframes fade{0%{opacity:0;transform:translateY(6px)}8%{opacity:1;transform:none}75%{opacity:1}100%{opacity:0}}
-
-  /* --- libreta de campo --- */
-  #book{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-.35deg);
-    width:min(700px,94vw);height:min(560px,86vh);display:none;pointer-events:auto;
-    background:var(--paper);
-    background-image:linear-gradient(var(--paper-line) 1px,transparent 1px);
-    background-size:100% 26px;background-position:0 46px;
-    box-shadow:0 18px 50px rgba(0,0,0,.6);border-left:9px solid #6d5c3c;overflow:hidden}
-  #book header{display:flex;gap:2px;align-items:flex-end;padding:12px 16px 0;border-bottom:2px solid var(--ink)}
-  #book header h1{flex:1;margin:0 0 6px;font-size:17px;font-weight:600;letter-spacing:.02em}
-  #book header button{background:none;border:0;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
-    text-transform:uppercase;padding:6px 10px;color:var(--ink-soft);cursor:pointer}
-  #book header button.sel{color:var(--ink);border-bottom:3px solid var(--ember);margin-bottom:-2px}
-  #pages{padding:12px 18px 18px;height:calc(100% - 46px);overflow:auto}
-  .entry{display:flex;gap:10px;align-items:baseline;padding:2px 0;height:26px;font-size:14.5px}
-  .entry .n{font-family:var(--mono);font-size:11px;color:var(--ink-soft);min-width:26px;text-align:right}
-  .entry .d{flex:1;color:var(--ink-soft);font-size:12px;font-style:italic;text-align:right}
-  .make{width:100%;text-align:left;background:none;border:0;cursor:pointer;padding:2px 0;height:26px;
-    font-family:var(--serif);font-size:14.5px;color:var(--ink);display:flex;gap:10px;align-items:baseline}
-  .make:disabled{color:#8d8570;cursor:default}
-  .make .cost{flex:1;text-align:right;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em}
-  .make .tick{width:14px}
-  .make:not(:disabled):hover{color:var(--ember)}
-  .hint{font-size:12.5px;font-style:italic;color:var(--ink-soft);height:26px;line-height:26px}
-  .use{margin-left:8px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
-    background:none;border:1px solid var(--ink-soft);border-radius:2px;padding:2px 6px;cursor:pointer;color:var(--ink)}
-
-  /* --- portada / menús --- */
-  #veil{position:absolute;inset:0;background:radial-gradient(60% 60% at 50% 45%,#1c2116,#080a06);
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:auto;text-align:center;padding:24px}
-  #veil h1{margin:0;font-size:clamp(46px,12vw,86px);letter-spacing:.16em;color:var(--paper);font-weight:400}
-  #veil .sub{font-family:var(--mono);font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:#9aa383;margin-bottom:26px}
-  #veil p{max-width:430px;color:#b8bda4;font-size:14px;line-height:1.55;margin:0 0 22px}
-  #veil button{pointer-events:auto;background:none;color:var(--paper);border:1px solid #7d8666;
-    padding:11px 26px;margin:5px;font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
-  #veil button:hover{background:var(--paper);color:var(--ink)}
-  #veil small{color:#79805f;font-family:var(--mono);font-size:10px;letter-spacing:.1em;margin-top:20px;line-height:2}
-
-  /* --- controles táctiles --- */
-  #touch{position:absolute;inset:0;display:none}
-  #stick{position:absolute;left:22px;bottom:120px;width:120px;height:120px;border:1px solid rgba(255,255,255,.28);
-    border-radius:50%;pointer-events:auto}
-  #stick i{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;
-    background:rgba(255,255,255,.24)}
-  .tbtn{position:absolute;pointer-events:auto;width:64px;height:64px;border-radius:50%;
-    border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.28);color:var(--paper);
-    font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
-  #tAct{right:24px;bottom:150px;width:82px;height:82px}
-  #tJump{right:112px;bottom:96px}
-  #tRun{right:24px;bottom:62px}
-  #tBook{right:16px;top:76px;width:54px;height:54px}
-</style>
-</head>
-<body>
-<div id="hud">
-  <div id="cross"></div>
-  <div id="prompt"></div>
-  <div id="promptbar"><i></i></div>
-  <div id="clockbox">
-    <div class="day">Día <span id="dayn">1</span></div>
-    <div class="time" id="clock">06:00</div>
-    <div class="weather" id="weather">despejado · 12°</div>
-    <div class="weather" id="biome" style="opacity:.6">bosque</div>
-  </div>
-  <div id="vitals"></div>
-  <div id="hotbar"></div>
-  <div id="dream"></div>
-  <div id="pack"></div>
-  <div id="log"></div>
-
-  <div id="book">
-    <header>
-      <h1>Libreta de campo</h1>
-      <button data-tab="inv" class="sel">Zurrón</button>
-      <button data-tab="craft">Fabricar</button>
-      <button data-tab="know">Saber</button>
-    </header>
-    <div id="pages"></div>
-  </div>
-
-  <div id="touch">
-    <div id="stick"><i></i></div>
-    <button class="tbtn" id="tAct">Acción</button>
-    <button class="tbtn" id="tJump">Saltar</button>
-    <button class="tbtn" id="tRun">Correr</button>
-    <button class="tbtn" id="tBook">Libreta</button>
-  </div>
-
-  <div id="veil">
-    <h1>RAÍZ</h1>
-    <div class="sub">supervivencia en el bosque</div>
-    <p id="veiltext">Un cuchillo, un ferrocerio y una cantimplora vacía. El bosque no es hostil: es indiferente. Corta ramas, busca un claro, levanta refugio antes de que caiga el agua.</p>
-    <div id="veilbtns">
-      <button id="btnNew">Nueva partida</button>
-      <button id="btnCont" style="display:none">Continuar</button>
-    </div>
-    <small id="veilkeys">WASD moverse · RATÓN mirar · MAYÚS correr · ESPACIO saltar<br>E interactuar (mantener para golpear o encender) · TAB libreta<br>1-4 empuñar · C agacharse · F antorcha · I mochila · ESC pausa</small>
-  </div>
-</div>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-"use strict";
 /* ==========================================================================
    RAÍZ — prototipo de supervivencia bushcraft
    Mundo infinito por chunks · ciclo día/noche · termorregulación · fuego
@@ -537,10 +357,12 @@ const grassTex = canvasTex(128, 128, (g, w, h) => {
     const l = h * (0.42 + Math.random() * 0.56);
     const cur = (Math.random() - 0.5) * 38;              // cuánto se curva la hoja
     const an = 1.6 + Math.random() * 2.6;                // media anchura en la base
-    const v = 84 + Math.random() * 88;
+    // Casi neutra a propósito: el verde y el seco los pone el color por instancia,
+    // así una sola textura da todo el rango de la pradera.
+    const v = 150 + Math.random() * 95;
     const grd = g.createLinearGradient(0, h, 0, h - l);  // base en sombra, punta clara
-    grd.addColorStop(0, 'rgb(' + (v * 0.34) + ',' + (v * 0.62) + ',' + (v * 0.26) + ')');
-    grd.addColorStop(1, 'rgb(' + (v * 0.82) + ',' + v + ',' + (v * 0.48) + ')');
+    grd.addColorStop(0, 'rgb(' + (v * 0.56) + ',' + (v * 0.72) + ',' + (v * 0.44) + ')');
+    grd.addColorStop(1, 'rgb(' + (v * 0.95) + ',' + v + ',' + (v * 0.72) + ')');
     g.fillStyle = grd;
     g.beginPath();
     g.moveTo(x - an, h);
@@ -551,13 +373,24 @@ const grassTex = canvasTex(128, 128, (g, w, h) => {
 });
 grassTex.repeat.set(1, 1);
 grassTex.anisotropy = maxAniso;
+// vertexColors es lo que hace que setColorAt sirva de algo: sin él, three calcula
+// el color por instancia y el fragment shader lo ignora.
 const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, alphaTest: 0.42, transparent: false,
-  side: THREE.DoubleSide, roughness: 1, color: 0xffffff });
+  side: THREE.DoubleSide, roughness: 1, color: 0xffffff, vertexColors: true });
 addSway(grassMat, 0.075);
 function crossPlanes(w, h){
   const a = new THREE.PlaneGeometry(w, h); a.translate(0, h / 2, 0);
   const b = a.clone(); b.rotateY(Math.PI / 2);
   return mergeGeos([{ geo: a, m: null }, { geo: b, m: null }]);
+}
+/* vertexColors sin atributo `color` en la geometría deja el atributo sin enlazar,
+   y WebGL lo sirve como (0,0,0): todo se multiplica a negro. Hay que poner el
+   blanco explícito para que el color por instancia tenga sobre qué multiplicar. */
+function conColorBlanco(geo){
+  const n = geo.attributes.position.count;
+  const c = new Float32Array(n * 3).fill(1);
+  geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  return geo;
 }
 /* tres planos en estrella: de cerca la mata tiene volumen desde cualquier ángulo */
 function starPlanes(n, w, h){
@@ -569,7 +402,7 @@ function starPlanes(n, w, h){
   }
   return mergeGeos(parts);
 }
-const grassGeo = crossPlanes(0.55, 0.7);
+const grassGeo = conColorBlanco(crossPlanes(0.55, 0.7));
 /* capa lejana: rala a propósito, el suelo cercano lo cubre el césped de §5c */
 const GRASS_DENS = { claro: 780, mixto: 420, frondoso: 320, pinar: 240, ribera: 560, roquedo: 45 };
 
@@ -673,9 +506,9 @@ function setCalidad(v){
   renderer.setSize(innerWidth, innerHeight);
   resizeRT();
   construirCesped();
-  try{ window.storage.set('raiz:gfx', v); } catch(e){}
+  try{ storage.set('raiz:gfx', v); } catch(e){}
 }
-try{ window.storage.get('raiz:gfx').then(r => { if (r && r.value) setCalidad(r.value); }).catch(() => {}); } catch(e){}
+try{ storage.get('raiz:gfx').then(r => { if (r && r.value) setCalidad(r.value); }).catch(() => {}); } catch(e){}
 
 /* ---------- 5c. césped cercano ----------
    Una alfombra densa que sigue al jugador. Rejilla toroidal: la ventana de celdas
@@ -684,14 +517,16 @@ try{ window.storage.get('raiz:gfx').then(r => { if (r && r.value) setCalidad(r.v
 const cespedCen = { value: new THREE.Vector3() };
 const cespedRad = { value: 1 };
 const cespedMat = new THREE.MeshStandardMaterial({ map: grassTex, alphaTest: 0.4, transparent: false,
-  side: THREE.DoubleSide, roughness: 1 });
+  side: THREE.DoubleSide, roughness: 1, vertexColors: true });
 addSway(cespedMat, 0.075, true);
-const cespedGeo = starPlanes(3, 0.44, 0.54);
+/* Matas anchas y solapadas: leen como pradera continua con muchas menos
+   instancias que briznas finas separadas. */
+const cespedGeo = conColorBlanco(starPlanes(3, 0.62, 0.58));
 
 /* probabilidad de que una brizna prenda, por bioma: el claro es un prado,
    el pinar es agujas y el roquedo es piedra */
-const CESPED_DENS = { claro: 0.95, ribera: 0.86, mixto: 0.62, frondoso: 0.5, pinar: 0.34, roquedo: 0.06 };
-const CESPED_K = { alto: 108, medio: 56, bajo: 0 };      // matas por celda de 4×4 m
+const CESPED_DENS = { claro: 1, ribera: 0.95, mixto: 0.85, frondoso: 0.7, pinar: 0.5, roquedo: 0.1 };
+const CESPED_K = { alto: 150, medio: 78, bajo: 0 };      // matas por celda de 4×4 m
 const CERO = new THREE.Matrix4().makeScale(0, 0, 0);
 const cesped = { mesh: null, cells: 0, lado: 4, K: 0, slots: [],
   M: new THREE.Matrix4(), Q: new THREE.Quaternion(), E: new THREE.Euler(),
@@ -710,8 +545,10 @@ function construirCesped(){
   im.receiveShadow = true;
   im.frustumCulled = false;                               // la ventana ya es el recorte
   im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  for (let i = 0; i < im.count; i++) im.setMatrixAt(i, CERO);
-  if (im.setColorAt) im.setColorAt(0, cesped.C.setRGB(1, 1, 1));
+  // setColorAt reserva el buffer a ceros, o sea a negro: hay que blanquearlo entero
+  // o cualquier instancia sin color asignado saldría como una mancha oscura.
+  cesped.C.setRGB(1, 1, 1);
+  for (let i = 0; i < im.count; i++){ im.setMatrixAt(i, CERO); im.setColorAt(i, cesped.C); }
   scene.add(im);
   cesped.mesh = im;
 }
@@ -727,12 +564,12 @@ function llenarCelda(wi, wj, slot){
     const y = heightAt(ex, ez);
     h.push(y);
     const b = biomeAt(ex, ez, y);
-    // el dosel cerrado no deja prender la hierba
-    p.push((CESPED_DENS[b] || 0.3) * (1 - 0.42 * clamp(BIOME[b].dens * (treeNoise(ex, ez) * 0.6 + 0.4) * 1.35, 0, 1)));
+    // el dosel cerrado no deja prender la hierba, pero clarea, no arrasa
+    p.push((CESPED_DENS[b] || 0.5) * (1 - 0.25 * clamp(BIOME[b].dens * (treeNoise(ex, ez) * 0.6 + 0.4) * 1.35, 0, 1)));
   }
   const dhx = ((h[1] + h[3]) - (h[0] + h[2])) * 0.5 / lado;
   const dhz = ((h[2] + h[3]) - (h[0] + h[1])) * 0.5 / lado;
-  const kPend = clamp(1 - Math.sqrt(dhx * dhx + dhz * dhz) * 1.15, 0.06, 1);   // en talud no agarra
+  const kPend = clamp(1 - Math.sqrt(dhx * dhx + dhz * dhz) * 0.7, 0.25, 1);    // solo el talud fuerte pela
   const base = slot * K;
   const { M, Q, E, V, S, C } = cesped;
   const rng = mulberry32((wi * 374761393 ^ wj * 668265263 ^ SEED) >>> 0);
@@ -744,17 +581,25 @@ function llenarCelda(wi, wj, slot){
     const y = heightAt(x, z);
     if (y < WATER + 0.12 || y > 44){ im.setMatrixAt(base + k, CERO); continue; }
     const seco = r2;                                       // reparto verde/seco dentro de la mata
-    const s = 0.55 + r2 * 0.8;
+    const s = 0.7 + r2 * 0.85;
     E.set((r3 - 0.5) * 0.28, r3 * 6.28, (r1 / prob - 0.5) * 0.28);   // caída ligera, no todas rectas
     Q.setFromEuler(E);
     V.set(x, y - 0.05, z);
     S.set(s, s * (0.75 + r3 * 0.6), s);
     im.setMatrixAt(base + k, M.compose(V, Q, S));
-    if (im.setColorAt){
-      C.setRGB(seco > 0.78 ? 0.74 : 0.44 + seco * 0.22, seco > 0.78 ? 0.64 : 0.60, seco > 0.78 ? 0.36 : 0.30);
-      im.setColorAt(base + k, C);
-    }
+    // multiplica la textura casi neutra: verde de sotobosque a paja seca.
+    // Apagado a propósito, que el follaje de los árboles también lo está.
+    if (seco > 0.8) C.setRGB(0.74, 0.66, 0.44);
+    else C.setRGB(0.40 + seco * 0.24, 0.50 + seco * 0.18, 0.30 + seco * 0.12);
+    im.setColorAt(base + k, C);
   }
+}
+
+function marcarRango(attr, desde, cuantas, itemSize, total, entero){
+  attr.needsUpdate = true;
+  if (entero || cuantas >= total){ attr.updateRange.offset = 0; attr.updateRange.count = -1; return; }
+  attr.updateRange.offset = desde * itemSize;
+  attr.updateRange.count = cuantas * itemSize;
 }
 
 function updateCesped(){
@@ -764,7 +609,7 @@ function updateCesped(){
   const cells = cesped.cells, lado = cesped.lado, half = cells >> 1;
   const ci = Math.floor(player.pos.x / lado) - half, cj = Math.floor(player.pos.z / lado) - half;
   let presu = cespedFull ? cells * cells : 3;              // al arrancar o al cargar, de golpe
-  let tocado = false;
+  let lo = Infinity, hi = -1;
   for (let a = 0; a < cells && presu > 0; a++) for (let b = 0; b < cells && presu > 0; b++){
     const wi = ci + a, wj = cj + b;
     const id = wi + ',' + wj;
@@ -772,11 +617,16 @@ function updateCesped(){
     if (cesped.slots[slot] === id) continue;
     cesped.slots[slot] = id;
     llenarCelda(wi, wj, slot);
-    presu--; tocado = true;
+    if (slot < lo) lo = slot;
+    if (slot > hi) hi = slot;
+    presu--;
   }
-  if (tocado){
-    im.instanceMatrix.needsUpdate = true;
-    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  if (hi >= 0){
+    // Sin acotar el rango se resubirían las ~38 000 matrices enteras cada vez que
+    // cruzas una celda, varias veces por segundo. Solo sube el tramo tocado.
+    const K = cesped.K, total = cesped.slots.length * K;
+    marcarRango(im.instanceMatrix, lo * K, (hi - lo + 1) * K, 16, total, cespedFull);
+    if (im.instanceColor) marcarRango(im.instanceColor, lo * K, (hi - lo + 1) * K, 3, total, cespedFull);
   }
   cespedFull = false;
 }
@@ -1936,7 +1786,7 @@ async function save(silencioso){
   if (guardando) return;
   guardando = true;
   try{
-    await window.storage.set(SAVE_KEY, JSON.stringify(snapshot()));
+    await storage.set(SAVE_KEY, JSON.stringify(snapshot()));
     ultimoGuardado = performance.now();
     if (!silencioso) log('Partida guardada.');
   } catch(e){ if (!silencioso) log('No se ha podido guardar.'); }
@@ -1944,12 +1794,12 @@ async function save(silencioso){
 }
 async function load(){
   try{
-    const r = await window.storage.get(SAVE_KEY);
+    const r = await storage.get(SAVE_KEY);
     return r ? JSON.parse(r.value) : null;
   } catch(e){ return null; }
 }
 async function borrarPartida(){
-  try{ await window.storage.delete(SAVE_KEY); } catch(e){}
+  try{ await storage.delete(SAVE_KEY); } catch(e){}
 }
 function limpiarMundo(){
   chunks.forEach(c => scene.remove(c.grp)); chunks.clear();
@@ -2527,6 +2377,4 @@ drawVitals(); drawPack();
 TOOLS.cuchillo.visible = true;
 drawHotbar();
 requestAnimationFrame(frame);
-</script>
-</body>
-</html>
+
