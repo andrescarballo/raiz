@@ -368,16 +368,24 @@ function mergeGeos(parts){
   return out;
 }
 
-/* tronco de referencia (10 m) con ramas reales; las instancias escalan en bloque */
 const REF_H = 10;
-function makeTrunk(rBase, rTop, nb, y0, len, ang){
+
+/* Tronco de referencia (10 m) con ramas reales; las instancias escalan en bloque.
+   y1 es dónde acaba la banda de ramas y merma cuánto se acortan al subir. Las dos
+   importan: la copa se estrecha con la altura, así que una rama de longitud fija
+   acaba asomando por fuera del follaje como un pincho clavado. La rama tiene que
+   seguir el mismo perfil que la copa que la tapa. */
+function makeTrunk(rBase, rTop, nb, y0, len, ang, y1, merma){
   const base = new THREE.CylinderGeometry(rTop, rBase, REF_H, 7);
   base.translate(0, REF_H / 2, 0);
   const parts = [{ geo: base, m: null }];
+  const alto = y1 === undefined ? 0.93 : y1;
+  const k = merma === undefined ? 0.35 : merma;
   for (let i = 0; i < nb; i++){
-    const y = (y0 + (i / Math.max(1, nb - 1)) * (0.93 - y0)) * REF_H;
-    const l = len * (0.7 + 0.5 * (1 - i / nb));
-    const br = new THREE.CylinderGeometry(0.035, 0.085, l, 4);
+    const t = nb === 1 ? 0 : i / (nb - 1);
+    const y = (y0 + t * (alto - y0)) * REF_H;
+    const l = len * (1 - t * k);
+    const br = new THREE.CylinderGeometry(0.03, 0.08, l, 4);
     br.translate(0, l / 2, 0);
     const m = new THREE.Matrix4().makeRotationZ(ang);
     m.premultiply(new THREE.Matrix4().makeRotationY(i * 2.399));
@@ -562,11 +570,11 @@ const depthHoja = depthDeCopa(leafCardTex), depthAcicula = depthDeCopa(needleTex
 
 /* especies: alturas, copa y lo que dan al cortar */
 const SPECIES = {
-  pino:   { trunk: 'bark',  fol: 'pine',  folMat: pineMat,  hmin: 9,  hvar: 9, radK: 0.20, fy: 0.36, fh: 0.72, drop: 'resina',  lena: 5, dureza: 6, geo: makeTrunk(0.30, 0.13, 5, 0.45, 1.5, 1.15) },
-  abeto:  { trunk: 'bark',  fol: 'pine',  folMat: abetoMat, hmin: 11, hvar: 8, radK: 0.17, fy: 0.30, fh: 0.78, drop: 'resina',  lena: 6, dureza: 7, geo: makeTrunk(0.28, 0.11, 6, 0.35, 1.3, 1.30) },
-  roble:  { trunk: 'bark',  fol: 'oak',   folMat: oakMat2,  hmin: 6,  hvar: 6, radK: 0.40, fy: 0.50, fh: 0.55, drop: 'bellota', lena: 7, dureza: 9, geo: makeTrunk(0.42, 0.22, 5, 0.42, 2.4, 0.85) },
-  abedul: { trunk: 'birch', fol: 'oak',   folMat: alisoMat, hmin: 6,  hvar: 5, radK: 0.26, fy: 0.55, fh: 0.48, drop: 'corteza', lena: 3, dureza: 4, geo: makeTrunk(0.20, 0.09, 4, 0.5, 1.6, 1.0) },
-  aliso:  { trunk: 'bark',  fol: 'oak',   folMat: alisoMat, hmin: 5,  hvar: 5, radK: 0.32, fy: 0.52, fh: 0.50, drop: 'corteza', lena: 4, dureza: 5, geo: makeTrunk(0.24, 0.12, 5, 0.4, 1.8, 0.95) }
+  pino:   { trunk: 'bark',  fol: 'pine',  folMat: pineMat,  hmin: 9,  hvar: 9, radK: 0.20, fy: 0.36, fh: 0.72, drop: 'resina',  lena: 5, dureza: 6, geo: makeTrunk(0.30, 0.13, 6, 0.42, 1.15, 1.62, 0.80, 0.62) },
+  abeto:  { trunk: 'bark',  fol: 'pine',  folMat: abetoMat, hmin: 11, hvar: 8, radK: 0.17, fy: 0.30, fh: 0.78, drop: 'resina',  lena: 6, dureza: 7, geo: makeTrunk(0.28, 0.11, 7, 0.38, 1.00, 1.66, 0.78, 0.62) },
+  roble:  { trunk: 'bark',  fol: 'oak',   folMat: oakMat2,  hmin: 6,  hvar: 6, radK: 0.40, fy: 0.50, fh: 0.55, drop: 'bellota', lena: 7, dureza: 9, geo: makeTrunk(0.42, 0.22, 5, 0.58, 2.00, 0.85, 0.88, 0.34) },
+  abedul: { trunk: 'birch', fol: 'oak',   folMat: alisoMat, hmin: 6,  hvar: 5, radK: 0.26, fy: 0.55, fh: 0.48, drop: 'corteza', lena: 3, dureza: 4, geo: makeTrunk(0.20, 0.09, 4, 0.64, 1.20, 1.00, 0.88, 0.34) },
+  aliso:  { trunk: 'bark',  fol: 'oak',   folMat: alisoMat, hmin: 5,  hvar: 5, radK: 0.32, fy: 0.52, fh: 0.50, drop: 'corteza', lena: 4, dureza: 5, geo: makeTrunk(0.24, 0.12, 5, 0.60, 1.55, 0.95, 0.88, 0.34) }
 };
 
 const gStick = new THREE.CylinderGeometry(0.045, 0.055, 1.1, 5); gStick.rotateZ(Math.PI / 2.2);
