@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Raíz — supervivencia en el bosque</title>
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0a0c08">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RAÍZ">
+</head>
+<body>
+<div id="hud">
+  <div id="cross"></div>
+  <div id="prompt"></div>
+  <div id="promptbar"><i></i></div>
+  <div id="clockbox">
+    <div class="day">Día <span id="dayn">1</span></div>
+    <div class="time" id="clock">06:00</div>
+    <div class="weather" id="weather">despejado · 12°</div>
+    <div class="weather" id="biome" style="opacity:.6">bosque</div>
+  </div>
+  <div id="vitals"></div>
+  <div id="hotbar"></div>
+  <div id="dream"></div>
+  <div id="pack"></div>
+  <div id="log"></div>
+
+  <div id="book">
+    <header>
+      <h1>Libreta de campo</h1>
+      <button data-tab="inv" class="sel">Zurrón</button>
+      <button data-tab="craft">Fabricar</button>
+      <button data-tab="know">Saber</button>
+    </header>
+    <div id="pages"></div>
+  </div>
+
+  <div id="touch">
+    <div id="stick"><i></i></div>
+    <button class="tbtn" id="tAct">Acción</button>
+    <button class="tbtn" id="tJump">Saltar</button>
+    <button class="tbtn" id="tRun">Correr</button>
+    <button class="tbtn" id="tBook">Libreta</button>
+  </div>
+
+  <div id="update">
+    <span>Hay una nueva versión de RAÍZ</span>
+    <button id="updateBtn">Actualizar</button>
+  </div>
+
+  <div id="rotate">
+    <div class="glyph">⟳</div>
+    <p>Gira el dispositivo<br>para jugar en horizontal</p>
+  </div>
+
+  <div id="veil">
+    <h1>RAÍZ</h1>
+    <div class="sub">supervivencia en el bosque</div>
+    <p id="veiltext">Un cuchillo, un ferrocerio y una cantimplora vacía. El bosque no es hostil: es indiferente. Corta ramas, busca un claro, levanta refugio antes de que caiga el agua.</p>
+    <div id="veilbtns">
+      <button id="btnNew">Nueva partida</button>
+      <button id="btnCont" style="display:none">Continuar</button>
+    </div>
+    <small id="veilkeys">WASD moverse · RATÓN mirar · MAYÚS correr · ESPACIO saltar<br>E interactuar (mantener para golpear o encender) · TAB libreta<br>1-4 empuñar · C agacharse · F antorcha · I mochila · ESC pausa<br>B construir · G desmontar · H mover · M reforzar calidad</small>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

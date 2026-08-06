@@ -1,0 +1,18 @@
+{
+  "name": "raiz",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RAIZ - a bushcraft survival prototype in the browser",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "vite": "^6.4.3"
+  }
+}
