@@ -175,7 +175,7 @@
       <button id="btnNew">Nueva partida</button>
       <button id="btnCont" style="display:none">Continuar</button>
     </div>
-    <small id="veilkeys">WASD moverse · RATÓN mirar · MAYÚS correr · ESPACIO saltar<br>E interactuar (mantener para golpear o encender) · TAB libreta<br>1-4 empuñar · C agacharse · F antorcha · I mochila · ESC pausa</small>
+    <small id="veilkeys">WASD moverse · RATÓN mirar · MAYÚS correr · ESPACIO saltar<br>E interactuar (mantener para golpear o encender) · TAB libreta<br>1-4 empuñar · C agacharse · F antorcha · I mochila · B construir · ESC pausa</small>
   </div>
 </div>
 
@@ -1355,7 +1355,8 @@ const KNOW = [
   { id: 'lluvia', t: 'Recoger la lluvia', d: 'El agua del cielo no necesita hervirse.' },
   { id: 'plantas', t: 'Conocer las setas', d: 'Ya distingues las que no matan.' },
   { id: 'conserva', t: 'Conservar carne', d: 'Secar al aire y al humo alarga la despensa.' },
-  { id: 'abrigo', t: 'Vestirse del bosque', d: 'Corteza, musgo y juncos abrigan más que nada.' }
+  { id: 'abrigo', t: 'Vestirse del bosque', d: 'Corteza, musgo y juncos abrigan más que nada.' },
+  { id: 'construccion', t: 'Construcción modular', d: 'Postes, vigas y zarzo: la base deja de ser una pieza.' }
 ];
 
 /* ---------- 8. HUD ---------- */
@@ -1601,11 +1602,119 @@ function placeStructure(type, x, z, data){
     const m = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 4, 8), dryMat);
     m.rotation.x = Math.PI / 2; m.position.y = 0.12; g.add(m);
     st.timer = 120 + Math.random() * 180;
+  } else if (type === 'poste'){
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.8, 6), woodMat);
+    m.position.y = 0.9; m.castShadow = true; g.add(m);
+  } else if (type === 'viga'){
+    const len = (data && data.len) || 2;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, len), woodMat);
+    m.position.y = 1.55; m.castShadow = true; g.add(m);
+  } else if (type === 'zarzo'){
+    const len = (data && data.len) || 2;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.5, len), dryMat);
+    m.position.y = 0.75; m.castShadow = true; g.add(m);
   }
   if (data) Object.assign(st, data);
   scene.add(g);
   structures.push(st);
   return st;
+}
+
+/* ---------- construcción modular ---------- */
+const PIEZAS = [
+  { id: 'poste', name: 'Poste', cost: { palo: 2 }, need: 'grid' },
+  { id: 'viga', name: 'Viga', cost: { palo: 2, cordel: 1 }, need: 'pair' },
+  { id: 'zarzo', name: 'Pared de zarzo', cost: { palo: 4, cordel: 1 }, need: 'pair' }
+];
+let buildMode = false, buildI = 0, ghostValid = false, ghostData = null;
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0x6fbf5c, transparent: true, opacity: 0.55, depthWrite: false });
+const ghostGroup = new THREE.Group();
+const ghostPoste = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.8, 6), ghostMat); ghostPoste.position.y = 0.9;
+const ghostBand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 1), ghostMat);
+ghostGroup.add(ghostPoste, ghostBand); ghostGroup.visible = false;
+scene.add(ghostGroup);
+
+function canAfford(cost){ return Object.keys(cost).every(k => (inv[k] || 0) >= cost[k]); }
+function payCost(cost){ Object.keys(cost).forEach(k => inv[k] -= cost[k]); }
+function postes(){ return structures.filter(s => s.type === 'poste'); }
+function pointSegDist(px, pz, ax, az, bx, bz){
+  const dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz;
+  let t = len2 > 0 ? ((px - ax) * dx + (pz - az) * dz) / len2 : 0;
+  t = clamp(t, 0, 1);
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+function setBuildMode(on){
+  buildMode = on;
+  ghostGroup.visible = on;
+  if (!on){ promptEl.classList.remove('on'); }
+}
+function cycleBuild(dir){
+  buildI = (buildI + dir + PIEZAS.length) % PIEZAS.length;
+}
+function updateBuildGhost(){
+  const piece = PIEZAS[buildI];
+  const fwd = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
+  const raw = { x: player.pos.x + fwd.x * 2.2, z: player.pos.z + fwd.z * 2.2 };
+  let pos, rotY = player.yaw, len = 2, ok = false, reason = '';
+  if (piece.need === 'grid'){
+    const ps = postes();
+    pos = { x: Math.round(raw.x), z: Math.round(raw.z) };
+    let bestD = Math.hypot(pos.x - raw.x, pos.z - raw.z);
+    ps.forEach(p => [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([ox, oz]) => {
+      const cx = p.x + ox, cz = p.z + oz, d = Math.hypot(cx - raw.x, cz - raw.z);
+      if (d < bestD){ bestD = d; pos = { x: cx, z: cz }; }
+    }));
+    const distPlayer = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
+    const overlap = ps.some(p => Math.hypot(p.x - pos.x, p.z - pos.z) < 0.5);
+    reason = overlap ? 'Ya hay un poste ahí.' : distPlayer > 3.4 ? 'Demasiado lejos.' : !canAfford(piece.cost) ? 'Falta material.' : '';
+    ok = !reason;
+  } else {
+    const ps = postes();
+    let best = null, bestScore = 1e9;
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++){
+      const a = ps[i], b = ps[j], segLen = Math.hypot(b.x - a.x, b.z - a.z);
+      if (segLen < 1.1 || segLen > 3.4) continue;
+      const dseg = pointSegDist(raw.x, raw.z, a.x, a.z, b.x, b.z);
+      if (dseg < bestScore && dseg < 1.1){ bestScore = dseg; best = { a, b, segLen }; }
+    }
+    if (best){
+      pos = { x: (best.a.x + best.b.x) / 2, z: (best.a.z + best.b.z) / 2 };
+      rotY = Math.atan2(best.b.x - best.a.x, best.b.z - best.a.z);
+      len = best.segLen;
+      const dup = structures.some(s => s.type === piece.id && Math.hypot(s.x - pos.x, s.z - pos.z) < 0.3);
+      reason = dup ? 'Ya hay algo ahí.' : !canAfford(piece.cost) ? 'Falta material.' : '';
+      ok = !reason;
+    } else {
+      pos = raw; reason = 'Necesita dos postes cerca (entre 1,1 y 3,4 m).';
+    }
+  }
+  ghostData = { piece, x: pos.x, z: pos.z, rotY, len };
+  ghostValid = ok;
+  ghostPoste.visible = piece.need === 'grid';
+  ghostBand.visible = piece.need === 'pair';
+  if (piece.need === 'pair'){
+    ghostBand.geometry.dispose();
+    ghostBand.geometry = piece.id === 'zarzo'
+      ? new THREE.BoxGeometry(0.12, 1.5, Math.max(len, 0.2))
+      : new THREE.BoxGeometry(0.14, 0.14, Math.max(len, 0.2));
+    ghostBand.position.y = piece.id === 'zarzo' ? 0.75 : 1.55;
+  }
+  ghostMat.color.set(ok ? 0x6fbf5c : 0xcf4b3a);
+  ghostGroup.position.set(pos.x, heightAt(pos.x, pos.z), pos.z);
+  ghostGroup.rotation.y = rotY;
+  promptEl.innerHTML = 'Construir: <b>' + piece.name + '</b> · [rueda] cambiar pieza · <kbd>E</kbd> colocar · <kbd>B</kbd> salir' +
+    (reason ? ' — ' + reason : '');
+  promptEl.classList.add('on');
+}
+function tryPlaceGhost(){
+  if (!ghostData || !ghostValid) return;
+  const { piece, x, z, rotY, len } = ghostData;
+  payCost(piece.cost);
+  placeStructure(piece.id, x, z, { rotY, len, q: 1 });
+  unlock('construccion');
+  log(piece.name + (piece.id === 'poste' ? ' hincado.' : ' colocada.'));
+  swing = 1;
+  save(true);
 }
 
 /* --- interacción contextual --- */
@@ -1686,6 +1795,11 @@ function findTarget(){
       const noche = timeOfDay > 20.2 || timeOfDay < 5.4;
       consider(s, dist, d, noche ? 'Dormir hasta el amanecer' : 'Echarse un rato (aún es de día)',
                noche ? 'sleep' : 'nap', 1.0, 2.4);
+    }
+    if ((s.type === 'poste' || s.type === 'viga' || s.type === 'zarzo') && !buildMode &&
+        (enMano === 'cuchillo' || enMano === 'hacha')){
+      const nombre = { poste: 'el poste', viga: 'la viga', zarzo: 'la pared de zarzo' }[s.type];
+      consider(s, dist, d, 'Demoler ' + nombre, 'demolish', 1.2, 1.7);
     }
   });
   // agua
@@ -1821,6 +1935,14 @@ function doAction(t){
   }
   else if (t.act === 'nap'){ log('Con el sol alto no pegas ojo. Vuelve al anochecer.'); }
   else if (t.act === 'water'){ give('aguaSucia', 1); log('Cantimplora llena. Sin hervir, es una apuesta.'); }
+  else if (t.act === 'demolish'){
+    const s = t.obj, piece = PIEZAS.find(p => p.id === s.type);
+    if (piece) Object.keys(piece.cost).forEach(k => give(k, Math.max(1, Math.round(piece.cost[k] * 0.5))));
+    scene.remove(s.group);
+    const i = structures.indexOf(s); if (i >= 0) structures.splice(i, 1);
+    swing = 1; golpe(500, 0.22, 0.2, 'lowpass');
+    log((piece ? piece.name : 'Pieza') + ' desmontada. Parte del material se recupera.');
+  }
 }
 
 /* ---------- 10. controles ---------- */
@@ -1837,9 +1959,15 @@ addEventListener('keydown', e => {
     const i = parseInt(e.code.slice(5), 10) - 1;
     if (ORDEN_MANO[i]) equipar(ORDEN_MANO[i]);
   }
+  if (e.code === 'KeyB' && !bookOpen && !sleeping){
+    setBuildMode(!buildMode);
+    log(buildMode ? 'Modo construir. Rueda para cambiar de pieza.' : 'Sales del modo construir.');
+  }
+  if (e.code === 'Escape' && buildMode) setBuildMode(false);
   if (e.code === 'Escape' && bookOpen) toggleBook(false);
 });
 addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('wheel', e => { if (buildMode) cycleBuild(e.deltaY > 0 ? 1 : -1); }, { passive: true });
 renderer.domElement.addEventListener('click', () => {
   if (!paused && !isTouch && !bookOpen && !document.pointerLockElement) renderer.domElement.requestPointerLock();
 });
@@ -1928,7 +2056,7 @@ function snapshot(){
          salud: player.salud, energia: player.energia, agua: player.agua, vigor: player.vigor,
          temp: player.temp, mojado: player.mojado, torch: player.torch, torchFuel: player.torchFuel },
     st: structures.map(s => ({ type: s.type, x: s.x, z: s.z, lit: s.lit, fuel: s.fuel,
-         ready: s.ready, timer: s.timer, q: s.q, rotY: s.rotY, store: s.store, load: s.load })),
+         ready: s.ready, timer: s.timer, q: s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len })),
     ts: Date.now()
   };
 }
@@ -1975,7 +2103,7 @@ function applySave(d){
   cespedFull = true; updateCesped();       // el jugador salta de sitio: rellena la alfombra entera
   if (d.p.y === undefined) player.pos.y = heightAt(d.p.x, d.p.z);
   (d.st || []).forEach(s => placeStructure(s.type, s.x, s.z, { lit: s.lit, fuel: s.fuel, ready: s.ready,
-    timer: s.timer, q: s.q === undefined ? 0.4 : s.q, rotY: s.rotY, store: s.store, load: s.load }));
+    timer: s.timer, q: s.q === undefined ? 0.4 : s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len }));
   drawPack(); drawVitals();
 }
 
@@ -2462,6 +2590,11 @@ function frame(now){
     });
 
     // interacción
+    if (buildMode){
+      updateBuildGhost();
+      if (keys.KeyE){ tryPlaceGhost(); keys.KeyE = false; }
+      promptBar.style.display = 'none'; holdT = 0;
+    } else {
     target = sleeping ? null : findTarget();
     if (target){
       promptEl.innerHTML = (isTouch ? '' : '<kbd>E</kbd>') + target.label + (target.hold ? ' (mantén)' : '');
@@ -2475,6 +2608,7 @@ function frame(now){
         } else { doAction(target); keys.KeyE = false; }
       } else { holdT = 0; promptBar.style.display = 'none'; }
     } else { promptEl.classList.remove('on'); promptBar.style.display = 'none'; holdT = 0; }
+    }
 
     updateFauna(dt);
     updateAudio(dt, env);

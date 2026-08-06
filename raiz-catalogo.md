@@ -23,7 +23,8 @@ Sirve como base para decidir qué se implementa y en qué orden. No todo entra: 
 | Hierba alta y baja, maleza, troncos caídos, tocones huecos, pedruscos | hecho |
 | Audio sintetizado: viento, lluvia, fuego, arroyo, pasos, aves | hecho |
 | Persistencia total (diff del mundo) y calidad gráfica configurable | hecho |
-| Construcción modular de base, cerámica, huerto, estaciones | pendiente |
+| Construcción modular de base (postes, vigas, zarzo, demoler) | parcial |
+| Cerámica, huerto, estaciones | pendiente |
 
 ---
 
@@ -365,6 +366,11 @@ fuego → cordel → herramientas → refugio → trampas → caza mayor → cer
 ## 15. Construcción de base (modular)
 
 El refugio de emergencia es de una pieza. La base no: se levanta módulo a módulo, y cada módulo tiene su calidad.
+
+**Implementado (modo `B`):** poste (rejilla de 1 m con imán a postes cercanos), viga y pared de zarzo
+(exigen apoyarse entre dos postes a 1,1–3,4 m), fantasma verde/rojo según validez y material disponible,
+demoler devuelve la mitad del coste. **Pendiente:** nivelar terreno, revoco, cubierta, suelo, el resto del
+catálogo de piezas (§ tabla siguiente) y el concepto de interior/humo.
 
 ### Rejilla y colocación
 - Rejilla blanda de **1 m** con imán a los postes ya puestos: las piezas encajan solas pero el conjunto no parece de cubos.
