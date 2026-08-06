@@ -110,6 +110,27 @@
   #veil button:hover{background:var(--paper);color:var(--ink)}
   #veil small{color:#79805f;font-family:var(--mono);font-size:10px;letter-spacing:.1em;margin-top:20px;line-height:2}
 
+  /* --- aviso de actualización (service worker) --- */
+  #update{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(140%);
+    display:flex;align-items:center;gap:14px;padding:10px 16px;pointer-events:auto;z-index:1000;
+    background:linear-gradient(180deg,var(--paper),var(--paper-dark));box-shadow:0 8px 24px rgba(0,0,0,.5);
+    border-radius:3px;font-family:var(--mono);font-size:12px;letter-spacing:.05em;color:var(--ink);
+    transition:transform .3s ease}
+  #update.on{transform:translateX(-50%) translateY(0)}
+  #update button{pointer-events:auto;background:var(--ink);color:var(--paper);border:0;border-radius:2px;
+    padding:7px 14px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  #update button:hover{background:var(--ember)}
+
+  /* --- aviso de girar pantalla (móvil en vertical) --- */
+  #rotate{position:fixed;inset:0;z-index:2000;display:none;pointer-events:auto;
+    flex-direction:column;align-items:center;justify-content:center;gap:12px;
+    background:#05070a;color:var(--paper);text-align:center;padding:24px}
+  #rotate .glyph{font-size:44px;animation:spin 1.8s ease-in-out infinite}
+  #rotate p{margin:0;font-family:var(--mono);font-size:12px;letter-spacing:.12em;line-height:1.8;
+    text-transform:uppercase;color:#9aa383}
+  @keyframes spin{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-90deg)}}
+  @media (pointer:coarse) and (orientation:portrait){ #rotate{display:flex} }
+
   /* --- controles táctiles --- */
   #touch{position:absolute;inset:0;display:none}
   #stick{position:absolute;left:22px;bottom:120px;width:120px;height:120px;border:1px solid rgba(255,255,255,.28);

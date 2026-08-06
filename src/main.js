@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { storage } from './core/storage.js';
+import { initPWA, initOrientationLock } from './core/pwa.js';
 import './styles.css';
+
+initPWA();
+initOrientationLock();
 
 /* ==========================================================================
    RAÍZ — prototipo de supervivencia bushcraft
