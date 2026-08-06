@@ -23,7 +23,9 @@ Sirve como base para decidir qué se implementa y en qué orden. No todo entra: 
 | Hierba alta y baja, maleza, troncos caídos, tocones huecos, pedruscos | hecho |
 | Audio sintetizado: viento, lluvia, fuego, arroyo, pasos, aves | hecho |
 | Persistencia total (diff del mundo) y calidad gráfica configurable | hecho |
-| Construcción modular de base, cerámica, huerto, estaciones | pendiente |
+| Construcción modular de base (postes, vigas, zarzo) | parcial |
+| Desmontar, mover y reforzar calidad — cualquier estructura (fogata, refugio, cama, trampa, recogedor, filtro, secadero, piezas modulares) | hecho |
+| Cerámica, huerto, estaciones | pendiente |
 
 ---
 
@@ -365,6 +367,21 @@ fuego → cordel → herramientas → refugio → trampas → caza mayor → cer
 ## 15. Construcción de base (modular)
 
 El refugio de emergencia es de una pieza. La base no: se levanta módulo a módulo, y cada módulo tiene su calidad.
+
+**Implementado (modo `B`):** poste (rejilla de 1 m con imán a postes cercanos), viga y pared de zarzo
+(exigen apoyarse entre dos postes a 1,1–3,4 m), fantasma verde/rojo según validez y material disponible.
+
+**Gestión de cualquier estructura ya puesta** (postes/vigas/zarzo y también fogata, refugio, cama,
+trampa, recogedor de lluvia, filtro y secadero — no hace falta estar en modo construir):
+- **`G` Desmontar** — apunta con cuchillo o hacha en mano, devuelve la mitad del coste original.
+- **`H` Mover** — la recoges (gratis), aparece un fantasma que sigue tu mirada (postes/vigas respetan
+  la misma rejilla/apoyo que al construir; el resto solo exige hueco libre y no estar en el agua),
+  `E` para soltarla de nuevo, `Esc` para dejarla donde estaba.
+- **`M` Reforzar** — con 2 unidades de un material de mejora de su receta (los mismos que suben la
+  calidad al fabricarla) sube la calidad de una estructura ya construida, sin tener que rehacerla.
+
+**Pendiente:** nivelar terreno, revoco, cubierta, suelo, el resto del catálogo de piezas
+(§ tabla siguiente) y el concepto de interior/humo.
 
 ### Rejilla y colocación
 - Rejilla blanda de **1 m** con imán a los postes ya puestos: las piezas encajan solas pero el conjunto no parece de cubos.

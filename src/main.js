@@ -1335,6 +1335,8 @@ const RECIPES = [
 ];
 const qual = {};   // calidad del equipo fabricado
 const stars = q => { const n = clamp(Math.round(q * 4), 1, 4); return '●'.repeat(n) + '○'.repeat(4 - n); };
+const RECIPE_BY_PLACE = {};
+RECIPES.forEach(r => { if (r.place) RECIPE_BY_PLACE[r.place] = r; });
 
 const KNOW = [
   { id: 'fuego', t: 'Prender fuego', d: 'Yesca, astillas, leña — en ese orden.' },
@@ -1348,7 +1350,8 @@ const KNOW = [
   { id: 'lluvia', t: 'Recoger la lluvia', d: 'El agua del cielo no necesita hervirse.' },
   { id: 'plantas', t: 'Conocer las setas', d: 'Ya distingues las que no matan.' },
   { id: 'conserva', t: 'Conservar carne', d: 'Secar al aire y al humo alarga la despensa.' },
-  { id: 'abrigo', t: 'Vestirse del bosque', d: 'Corteza, musgo y juncos abrigan más que nada.' }
+  { id: 'abrigo', t: 'Vestirse del bosque', d: 'Corteza, musgo y juncos abrigan más que nada.' },
+  { id: 'construccion', t: 'Construcción modular', d: 'Postes, vigas y zarzo: la base deja de ser una pieza.' }
 ];
 
 /* ---------- 8. HUD ---------- */
@@ -1594,11 +1597,243 @@ function placeStructure(type, x, z, data){
     const m = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 4, 8), dryMat);
     m.rotation.x = Math.PI / 2; m.position.y = 0.12; g.add(m);
     st.timer = 120 + Math.random() * 180;
+  } else if (type === 'poste'){
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.8, 6), woodMat);
+    m.position.y = 0.9; m.castShadow = true; g.add(m);
+  } else if (type === 'viga'){
+    const len = (data && data.len) || 2;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, len), woodMat);
+    m.position.y = 1.55; m.castShadow = true; g.add(m);
+  } else if (type === 'zarzo'){
+    const len = (data && data.len) || 2;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.5, len), dryMat);
+    m.position.y = 0.75; m.castShadow = true; g.add(m);
   }
   if (data) Object.assign(st, data);
   scene.add(g);
   structures.push(st);
   return st;
+}
+
+/* ---------- construcción modular ---------- */
+const PIEZAS = [
+  { id: 'poste', name: 'Poste', cost: { palo: 2 }, need: 'grid' },
+  { id: 'viga', name: 'Viga', cost: { palo: 2, cordel: 1 }, need: 'pair' },
+  { id: 'zarzo', name: 'Pared de zarzo', cost: { palo: 4, cordel: 1 }, need: 'pair' }
+];
+let buildMode = false, buildI = 0, ghostValid = false, ghostData = null;
+const ghostMat = new THREE.MeshBasicMaterial({ color: 0x6fbf5c, transparent: true, opacity: 0.55, depthWrite: false });
+const ghostGroup = new THREE.Group();
+const ghostPoste = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.8, 6), ghostMat); ghostPoste.position.y = 0.9;
+const ghostBand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 1), ghostMat);
+ghostGroup.add(ghostPoste, ghostBand); ghostGroup.visible = false;
+scene.add(ghostGroup);
+
+function canAfford(cost){ return !cost || Object.keys(cost).every(k => (inv[k] || 0) >= cost[k]); }
+function payCost(cost){ Object.keys(cost).forEach(k => inv[k] -= cost[k]); }
+function postes(){ return structures.filter(s => s.type === 'poste'); }
+function pointSegDist(px, pz, ax, az, bx, bz){
+  const dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz;
+  let t = len2 > 0 ? ((px - ax) * dx + (pz - az) * dz) / len2 : 0;
+  t = clamp(t, 0, 1);
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+// resuelve dónde cae una pieza según su tipo de apoyo: 'grid' (rejilla+imán a postes),
+// 'pair' (necesita dos postes cerca) o 'front' (colocación libre, como fogata/refugio/cama).
+// cost=null cuando la colocación es gratis (mover algo que ya existía).
+function computePlacement(need, cost, raw, dupType){
+  let pos, rotY = player.yaw, len = 2, reason = '';
+  if (need === 'grid'){
+    const ps = postes();
+    pos = { x: Math.round(raw.x), z: Math.round(raw.z) };
+    let bestD = Math.hypot(pos.x - raw.x, pos.z - raw.z);
+    ps.forEach(p => [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([ox, oz]) => {
+      const cx = p.x + ox, cz = p.z + oz, d = Math.hypot(cx - raw.x, cz - raw.z);
+      if (d < bestD){ bestD = d; pos = { x: cx, z: cz }; }
+    }));
+    const distPlayer = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
+    const overlap = ps.some(p => Math.hypot(p.x - pos.x, p.z - pos.z) < 0.5);
+    reason = overlap ? 'Ya hay un poste ahí.' : distPlayer > 3.4 ? 'Demasiado lejos.' : !canAfford(cost) ? 'Falta material.' : '';
+  } else if (need === 'pair'){
+    const ps = postes();
+    let best = null, bestScore = 1e9;
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++){
+      const a = ps[i], b = ps[j], segLen = Math.hypot(b.x - a.x, b.z - a.z);
+      if (segLen < 1.1 || segLen > 3.4) continue;
+      const dseg = pointSegDist(raw.x, raw.z, a.x, a.z, b.x, b.z);
+      if (dseg < bestScore && dseg < 1.1){ bestScore = dseg; best = { a, b, segLen }; }
+    }
+    if (best){
+      pos = { x: (best.a.x + best.b.x) / 2, z: (best.a.z + best.b.z) / 2 };
+      rotY = Math.atan2(best.b.x - best.a.x, best.b.z - best.a.z);
+      len = best.segLen;
+      const dup = dupType && structures.some(s => s.type === dupType && Math.hypot(s.x - pos.x, s.z - pos.z) < 0.3);
+      reason = dup ? 'Ya hay algo ahí.' : !canAfford(cost) ? 'Falta material.' : '';
+    } else {
+      pos = raw; reason = 'Necesita dos postes cerca (entre 1,1 y 3,4 m).';
+    }
+  } else {
+    pos = raw;
+    const distPlayer = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
+    const overlap = structures.some(s => Math.hypot(s.x - pos.x, s.z - pos.z) < 1.0);
+    const enAgua = heightAt(pos.x, pos.z) < WATER - 0.05;
+    reason = overlap ? 'Muy cerca de otra cosa.' : enAgua ? 'Ahí es agua.' : distPlayer > 3.6 ? 'Demasiado lejos.' :
+      !canAfford(cost) ? 'Falta material.' : '';
+  }
+  return { pos, rotY, len, ok: !reason, reason };
+}
+function setBuildMode(on){
+  if (on && cargando) return;
+  buildMode = on;
+  ghostGroup.visible = on;
+  if (!on){ promptEl.classList.remove('on'); }
+}
+function cycleBuild(dir){
+  buildI = (buildI + dir + PIEZAS.length) % PIEZAS.length;
+}
+function updateBuildGhost(){
+  const piece = PIEZAS[buildI];
+  const fwd = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
+  const raw = { x: player.pos.x + fwd.x * 2.2, z: player.pos.z + fwd.z * 2.2 };
+  const r = computePlacement(piece.need, piece.cost, raw, piece.id);
+  const pos = r.pos, rotY = r.rotY, len = r.len, ok = r.ok, reason = r.reason;
+  ghostData = { piece, x: pos.x, z: pos.z, rotY, len };
+  ghostValid = ok;
+  ghostPoste.visible = piece.need === 'grid';
+  ghostBand.visible = piece.need === 'pair';
+  if (piece.need === 'pair'){
+    ghostBand.geometry.dispose();
+    ghostBand.geometry = piece.id === 'zarzo'
+      ? new THREE.BoxGeometry(0.12, 1.5, Math.max(len, 0.2))
+      : new THREE.BoxGeometry(0.14, 0.14, Math.max(len, 0.2));
+    ghostBand.position.y = piece.id === 'zarzo' ? 0.75 : 1.55;
+  }
+  ghostMat.color.set(ok ? 0x6fbf5c : 0xcf4b3a);
+  ghostGroup.position.set(pos.x, heightAt(pos.x, pos.z), pos.z);
+  ghostGroup.rotation.y = rotY;
+  promptEl.innerHTML = 'Construir: <b>' + piece.name + '</b> · [rueda] cambiar pieza · <kbd>E</kbd> colocar · <kbd>B</kbd> salir' +
+    (reason ? ' — ' + reason : '');
+  promptEl.classList.add('on');
+}
+function tryPlaceGhost(){
+  if (!ghostData || !ghostValid) return;
+  const { piece, x, z, rotY, len } = ghostData;
+  payCost(piece.cost);
+  placeStructure(piece.id, x, z, { rotY, len, q: 1 });
+  unlock('construccion');
+  log(piece.name + (piece.id === 'poste' ? ' hincado.' : ' colocada.'));
+  swing = 1;
+  save(true);
+}
+
+/* ---------- desmontar, mover y reforzar cualquier estructura ---------- */
+function nombreEstructura(type){
+  const piece = PIEZAS.find(p => p.id === type);
+  if (piece) return piece.name;
+  const r = RECIPE_BY_PLACE[type];
+  return r ? r.name : 'la estructura';
+}
+function costeEstructura(type){
+  const piece = PIEZAS.find(p => p.id === type);
+  if (piece) return piece.cost;
+  const r = RECIPE_BY_PLACE[type];
+  return r ? r.base : null;
+}
+function findNearStructure(maxDist){
+  const fwd = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
+  let best = null, bestScore = 0;
+  structures.forEach(s => {
+    const dx = s.x - player.pos.x, dz = s.z - player.pos.z;
+    const dist = Math.hypot(dx, dz); if (dist > maxDist || dist < 0.01) return;
+    const dot = (dx / dist) * fwd.x + (dz / dist) * fwd.z; if (dot < 0.35) return;
+    const score = dot / (1 + dist * 0.35);
+    if (score > bestScore){ bestScore = score; best = s; }
+  });
+  return best;
+}
+function tryDismantle(){
+  if (buildMode || cargando) return;
+  if (enMano !== 'cuchillo' && enMano !== 'hacha'){ log('Necesitas cuchillo o hacha para desmontar algo.'); return; }
+  const s = findNearStructure(3.2);
+  if (!s){ log('Nada delante para desmontar.'); return; }
+  const cost = costeEstructura(s.type);
+  if (cost) Object.keys(cost).forEach(k => give(k, Math.max(1, Math.round(cost[k] * 0.5))));
+  scene.remove(s.group);
+  const i = structures.indexOf(s); if (i >= 0) structures.splice(i, 1);
+  swing = 1; golpe(500, 0.22, 0.2, 'lowpass');
+  log(nombreEstructura(s.type) + ' desmontada. Parte del material se recupera.');
+  save(true);
+}
+
+let cargando = null, moveValid = false, moveData = null;
+const moveMat = new THREE.MeshBasicMaterial({ color: 0x6fbf5c, transparent: true, opacity: 0.4, depthWrite: false });
+const moveGhost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), moveMat);
+moveGhost.visible = false;
+scene.add(moveGhost);
+const FOOTPRINT = {
+  fire: [1.1, 1.0, 1.1], shelter: [2.6, 1.4, 2.2], bed: [2.1, 0.3, 1.1],
+  trap: [0.6, 0.2, 0.6], catcher: [0.9, 1.3, 0.9], filtro: [0.8, 1.1, 0.8],
+  secadero: [2.0, 1.7, 0.7], poste: [0.24, 1.8, 0.24]
+};
+function startMove(){
+  if (buildMode || cargando) return;
+  const s = findNearStructure(3.4);
+  if (!s){ log('Nada delante para mover.'); return; }
+  cargando = { type: s.type, q: s.q === undefined ? 1 : s.q, len: s.len, origX: s.x, origZ: s.z, origRotY: s.rotY };
+  scene.remove(s.group);
+  const i = structures.indexOf(s); if (i >= 0) structures.splice(i, 1);
+  moveGhost.visible = true;
+  log('Cargas ' + nombreEstructura(cargando.type) + '. <E> para soltar, <Esc> para dejarlo donde estaba.');
+}
+function updateMoveGhost(){
+  const fwd = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
+  const raw = { x: player.pos.x + fwd.x * 2.0, z: player.pos.z + fwd.z * 2.0 };
+  const need = cargando.type === 'poste' ? 'grid' : (cargando.type === 'viga' || cargando.type === 'zarzo') ? 'pair' : 'front';
+  const r = computePlacement(need, null, raw, cargando.type);
+  moveData = { x: r.pos.x, z: r.pos.z, rotY: r.rotY, len: r.len };
+  moveGhost.geometry.dispose();
+  let dims = FOOTPRINT[cargando.type];
+  if (!dims) dims = [0.14, cargando.type === 'zarzo' ? 1.5 : 0.14, Math.max(r.len || cargando.len || 2, 0.2)];
+  moveGhost.geometry = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
+  moveGhost.position.set(r.pos.x, heightAt(r.pos.x, r.pos.z) + dims[1] / 2, r.pos.z);
+  moveGhost.rotation.y = r.rotY;
+  moveMat.color.set(r.ok ? 0x6fbf5c : 0xcf4b3a);
+  moveValid = r.ok;
+  promptEl.innerHTML = 'Moviendo: <b>' + nombreEstructura(cargando.type) + '</b> · <kbd>E</kbd> soltar · <kbd>Esc</kbd> cancelar' +
+    (r.reason ? ' — ' + r.reason : '');
+  promptEl.classList.add('on');
+}
+function confirmMove(){
+  if (!cargando || !moveValid || !moveData) return;
+  placeStructure(cargando.type, moveData.x, moveData.z, { rotY: moveData.rotY, len: moveData.len, q: cargando.q });
+  log(nombreEstructura(cargando.type) + ' colocada de nuevo.');
+  moveGhost.visible = false; cargando = null; moveData = null; promptEl.classList.remove('on');
+  save(true);
+}
+function cancelMove(){
+  if (!cargando) return;
+  placeStructure(cargando.type, cargando.origX, cargando.origZ, { rotY: cargando.origRotY, len: cargando.len, q: cargando.q });
+  moveGhost.visible = false; cargando = null; moveData = null; promptEl.classList.remove('on');
+  log('Dejas todo donde estaba.');
+}
+function tryReforzar(){
+  if (buildMode || cargando) return;
+  const s = findNearStructure(3.2);
+  if (!s){ log('Nada delante para reforzar.'); return; }
+  const r = RECIPE_BY_PLACE[s.type];
+  if (!r || !r.extra){ log('Eso no admite mejoras.'); return; }
+  const q = s.q === undefined ? 0.3 : s.q;
+  if (q >= 0.97){ log(nombreEstructura(s.type) + ' ya está en su mejor punto.'); return; }
+  const key = Object.keys(r.extra).find(k => (inv[k] || 0) >= 2);
+  if (!key){
+    log('Te falta material para reforzar (' + Object.keys(r.extra).map(k => ITEMS[k].toLowerCase()).join(', ') + ').');
+    return;
+  }
+  inv[key] -= 2;
+  s.q = clamp(q + r.extra[key].q * 0.6, 0, 1);
+  log(nombreEstructura(s.type) + ' reforzada con ' + ITEMS[key].toLowerCase() + ' — calidad ' + stars(s.q));
+  drawPack();
+  save(true);
 }
 
 /* --- interacción contextual --- */
@@ -1830,9 +2065,19 @@ addEventListener('keydown', e => {
     const i = parseInt(e.code.slice(5), 10) - 1;
     if (ORDEN_MANO[i]) equipar(ORDEN_MANO[i]);
   }
+  if (e.code === 'KeyB' && !bookOpen && !sleeping){
+    setBuildMode(!buildMode);
+    log(buildMode ? 'Modo construir. Rueda para cambiar de pieza.' : 'Sales del modo construir.');
+  }
+  if (e.code === 'KeyG' && !bookOpen && !sleeping) tryDismantle();
+  if (e.code === 'KeyH' && !bookOpen && !sleeping) startMove();
+  if (e.code === 'KeyM' && !bookOpen && !sleeping) tryReforzar();
+  if (e.code === 'Escape' && buildMode) setBuildMode(false);
+  if (e.code === 'Escape' && cargando) cancelMove();
   if (e.code === 'Escape' && bookOpen) toggleBook(false);
 });
 addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('wheel', e => { if (buildMode) cycleBuild(e.deltaY > 0 ? 1 : -1); }, { passive: true });
 renderer.domElement.addEventListener('click', () => {
   if (!paused && !isTouch && !bookOpen && !document.pointerLockElement) renderer.domElement.requestPointerLock();
 });
@@ -1921,7 +2166,7 @@ function snapshot(){
          salud: player.salud, energia: player.energia, agua: player.agua, vigor: player.vigor,
          temp: player.temp, mojado: player.mojado, torch: player.torch, torchFuel: player.torchFuel },
     st: structures.map(s => ({ type: s.type, x: s.x, z: s.z, lit: s.lit, fuel: s.fuel,
-         ready: s.ready, timer: s.timer, q: s.q, rotY: s.rotY, store: s.store, load: s.load })),
+         ready: s.ready, timer: s.timer, q: s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len })),
     ts: Date.now()
   };
 }
@@ -1968,7 +2213,7 @@ function applySave(d){
   cespedFull = true; updateCesped();       // el jugador salta de sitio: rellena la alfombra entera
   if (d.p.y === undefined) player.pos.y = heightAt(d.p.x, d.p.z);
   (d.st || []).forEach(s => placeStructure(s.type, s.x, s.z, { lit: s.lit, fuel: s.fuel, ready: s.ready,
-    timer: s.timer, q: s.q === undefined ? 0.4 : s.q, rotY: s.rotY, store: s.store, load: s.load }));
+    timer: s.timer, q: s.q === undefined ? 0.4 : s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len }));
   drawPack(); drawVitals();
 }
 
@@ -2455,6 +2700,15 @@ function frame(now){
     });
 
     // interacción
+    if (buildMode){
+      updateBuildGhost();
+      if (keys.KeyE){ tryPlaceGhost(); keys.KeyE = false; }
+      promptBar.style.display = 'none'; holdT = 0;
+    } else if (cargando){
+      updateMoveGhost();
+      if (keys.KeyE){ confirmMove(); keys.KeyE = false; }
+      promptBar.style.display = 'none'; holdT = 0;
+    } else {
     target = sleeping ? null : findTarget();
     if (target){
       promptEl.innerHTML = (isTouch ? '' : '<kbd>E</kbd>') + target.label + (target.hold ? ' (mantén)' : '');
@@ -2468,6 +2722,7 @@ function frame(now){
         } else { doAction(target); keys.KeyE = false; }
       } else { holdT = 0; promptBar.style.display = 'none'; }
     } else { promptEl.classList.remove('on'); promptBar.style.display = 'none'; holdT = 0; }
+    }
 
     updateFauna(dt);
     updateAudio(dt, env);
