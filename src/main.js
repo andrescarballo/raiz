@@ -225,6 +225,58 @@ const cLeaf = canvasOf(256, 256, (g, w, h) => {
     g.beginPath(); g.ellipse(x, y, 2 + Math.random() * 4, 1 + Math.random() * 2.5, Math.random() * 3, 0, 6.3); g.fill();
   }
 });
+/* Racimo de hojas recortado sobre fondo transparente. La silueta irregular del
+   alfa es lo que quita el aire de "bola de icosaedro": el volumen de la copa lo
+   dan los huecos, no los polígonos. */
+const cLeafCard = canvasOf(256, 256, (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  const rnd = mulberry32(4242);
+  const cx = w * 0.5, cy = h * 0.5;
+  for (let i = 0; i < 190; i++){
+    // disco con más densidad al centro: los bordes quedan deshilachados
+    const a = rnd() * 6.283, r = Math.pow(rnd(), 0.5) * w * 0.46;
+    const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.88;
+    const largo = 11 + rnd() * 15, ancho = 4.5 + rnd() * 5;
+    const v = 62 + rnd() * 96;
+    g.save(); g.translate(x, y); g.rotate(rnd() * 6.283);
+    g.fillStyle = 'rgb(' + (v * 0.50) + ',' + (v * 0.94) + ',' + (v * 0.38) + ')';
+    g.beginPath(); g.ellipse(0, 0, ancho, largo * 0.5, 0, 0, 6.283); g.fill();
+    g.restore();
+  }
+});
+/* Ramilla de acículas: se ancla por la izquierda y barre hacia la punta.
+   Tiene que llenar el alto del plano, no dejar un pelo en el centro: si el alfa
+   solo cubre una banda fina, la conífera acaba pareciendo patas de araña. */
+const cNeedle = canvasOf(256, 192, (g, w, h) => {
+  g.clearRect(0, 0, w, h);
+  const rnd = mulberry32(991);
+  const y0 = h * 0.5;
+  // ramillas secundarias que abren la mata a lo alto
+  for (let b = 0; b < 7; b++){
+    const bx = w * (0.06 + rnd() * 0.7);
+    const by = y0 + (rnd() - 0.5) * h * 0.5;
+    g.strokeStyle = 'rgb(58,46,32)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(bx, y0); g.lineTo(bx + w * 0.2, by); g.stroke();
+  }
+  g.strokeStyle = 'rgb(62,50,34)'; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(2, y0); g.lineTo(w * 0.9, y0); g.stroke();
+  for (let i = 0; i < 900; i++){
+    const t = Math.pow(rnd(), 0.85);
+    const x = 5 + t * (w * 0.9);
+    // la mata es un huso: estrecha en el arranque, ancha al medio, en punta al final
+    const perfil = Math.sin(Math.min(1, t * 1.15) * Math.PI) * 0.55 + 0.32;
+    const disp = (rnd() - 0.5) * 2 * perfil * h * 0.46;
+    const largo = 13 + rnd() * 20;
+    const lado = disp >= 0 ? 1 : -1;
+    const v = 52 + rnd() * 92;
+    g.strokeStyle = 'rgb(' + (v * 0.40) + ',' + (v * 0.86) + ',' + (v * 0.44) + ')';
+    g.lineWidth = 1.5 + rnd() * 1.5;
+    g.beginPath();
+    g.moveTo(x, y0 + disp * 0.25);
+    g.lineTo(x + largo * 0.55, y0 + disp + lado * largo * 0.3);
+    g.stroke();
+  }
+});
 const cRock = canvasOf(256, 256, (g, w, h) => {
   g.fillStyle = '#7b7770'; g.fillRect(0, 0, w, h);
   for (let i = 0; i < 9000; i++){
@@ -252,6 +304,15 @@ const groundTex = texOf(cGround, 26), groundNrm = normalOf(cGround, 2.2, 26);
 const barkTex = texOf(cBark, 1), barkNrm = normalOf(cBark, 3.0, 1);
 const birchTex = texOf(cBirch, 1), birchNrm = normalOf(cBirch, 1.6, 1);
 const leafTex = texOf(cLeaf, 2), leafNrm = normalOf(cLeaf, 1.4, 2);
+/* Los planos de copa no tilan: si se repiten, el alfa se corta contra el borde */
+function cardTex(c){
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.encoding = THREE.sRGBEncoding;
+  t.anisotropy = maxAniso;
+  return t;
+}
+const leafCardTex = cardTex(cLeafCard), needleTex = cardTex(cNeedle);
 const rockTex = texOf(cRock, 1), rockNrm = normalOf(cRock, 2.6, 1);
 const waterNrm = normalOf(cWater, 1.1, 34), waterNrm2 = normalOf(cWater, 0.8, 17);
 
@@ -260,8 +321,13 @@ const trunkGeo = new THREE.CylinderGeometry(0.16, 0.34, 1, 6); trunkGeo.translat
 const pineGeo = new THREE.ConeGeometry(1, 1, 7); pineGeo.translate(0, 0.5, 0);
 const oakGeo = new THREE.SphereGeometry(1, 7, 5); oakGeo.translate(0, 0.85, 0);
 const barkMat = new THREE.MeshStandardMaterial({ map: barkTex, normalMap: barkNrm, roughness: 0.95 });
-const pineMat = new THREE.MeshStandardMaterial({ map: leafTex, normalMap: leafNrm, color: 0x71875a, roughness: 1 });
-const oakMat2 = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x9aa85e, roughness: 1 });
+/* Copas: plano recortado, no sólido. alphaTest en vez de transparent para que
+   sigan escribiendo profundidad y no haya que ordenarlas por distancia. */
+const ALFA_COPA = 0.42;
+const pineMat = new THREE.MeshStandardMaterial({ map: needleTex, color: 0x8fa476, roughness: 1,
+  alphaTest: ALFA_COPA, side: THREE.DoubleSide });
+const oakMat2 = new THREE.MeshStandardMaterial({ map: leafCardTex, color: 0xa9b571, roughness: 1,
+  alphaTest: ALFA_COPA, side: THREE.DoubleSide });
 const terrainMat = new THREE.MeshStandardMaterial({ map: groundTex, normalMap: groundNrm,
   normalScale: new THREE.Vector2(0.8, 0.8), vertexColors: true, roughness: 1 });
 const rockMat = new THREE.MeshStandardMaterial({ map: rockTex, normalMap: rockNrm, roughness: 0.9 });
@@ -271,8 +337,10 @@ const bushMat = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x6d8442, 
 const fiberMat = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x7d9b4a, roughness: 1 });
 
 const birchMat = new THREE.MeshStandardMaterial({ map: birchTex, normalMap: birchNrm, roughness: 0.92 });
-const abetoMat = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x4c6446, roughness: 1 });
-const alisoMat = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x86a05a, roughness: 1 });
+const abetoMat = new THREE.MeshStandardMaterial({ map: needleTex, color: 0x64795a, roughness: 1,
+  alphaTest: ALFA_COPA, side: THREE.DoubleSide });
+const alisoMat = new THREE.MeshStandardMaterial({ map: leafCardTex, color: 0x93ad63, roughness: 1,
+  alphaTest: ALFA_COPA, side: THREE.DoubleSide });
 const mossMat  = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x6f8f4a, roughness: 1 });
 const reedMat  = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x9aa864, roughness: 1 });
 const flintMat = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.6, metalness: 0.15 });
@@ -406,29 +474,91 @@ const grassGeo = conColorBlanco(crossPlanes(0.55, 0.7));
 /* capa lejana: rala a propósito, el suelo cercano lo cubre el césped de §5c */
 const GRASS_DENS = { claro: 780, mixto: 420, frondoso: 320, pinar: 240, ribera: 560, roquedo: 45 };
 
-/* copas construidas por piezas: silueta mucho menos "low poly" */
-function blobFoliage(n, spread, alto){
-  const parts = [], rnd = mulberry32(7331);
+/* Copas de planos recortados.
+   Las normales reales de un montón de planos sueltos apuntan a cualquier parte y
+   la copa se ilumina a manchas. Reorientarlas como si fueran una superficie lisa
+   —esfera para frondosas, cilindro abierto para coníferas— es lo que hace que la
+   masa de hojas lea como un volumen y no como un montón de cartulinas.
+   El sesgo hacia arriba no es cosmético: sin él la mitad inferior de la copa
+   apunta en contra del sol y se ve una masa negra desde debajo del árbol. La
+   hoja real translúcida no hace eso, y este material no simula translucidez. */
+function normalesDeVolumen(geo, cy, kY, sesgo){
+  const pos = geo.attributes.position, nor = geo.attributes.normal;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++){
+    v.set(pos.getX(i), (pos.getY(i) - cy) * kY, pos.getZ(i));
+    if (v.lengthSq() < 1e-6) v.set(0, 1, 0);
+    v.normalize();
+    v.y += sesgo;
+    v.normalize();
+    nor.setXYZ(i, v.x, v.y, v.z);
+  }
+  nor.needsUpdate = true;
+  return geo;
+}
+
+/* frondosa: racimos repartidos por una cáscara elipsoidal, cada uno con su giro */
+function cardCrown(n, spread, alto, semilla){
+  const parts = [], rnd = mulberry32(semilla);
+  const E = new THREE.Euler(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3();
   for (let i = 0; i < n; i++){
-    const ang = i * 2.399, r = i ? spread * (0.45 + 0.55 * rnd()) : 0;
-    const y = 0.28 + rnd() * alto, sc = 0.30 + rnd() * 0.24;
-    parts.push({ geo: new THREE.IcosahedronGeometry(1, 0),
-      m: new THREE.Matrix4().compose(new THREE.Vector3(Math.cos(ang) * r, y, Math.sin(ang) * r),
-        new THREE.Quaternion(), new THREE.Vector3(sc, sc * 0.86, sc)) });
+    const a = i * 2.399, r = spread * Math.sqrt(rnd());
+    const y = 0.24 + rnd() * alto;
+    const s = 0.54 + rnd() * 0.40;
+    E.set(rnd() * 6.283, rnd() * 6.283, rnd() * 6.283);
+    Q.setFromEuler(E);
+    V.set(Math.cos(a) * r, y, Math.sin(a) * r);
+    S.set(s, s, s);
+    parts.push({ geo: new THREE.PlaneGeometry(1, 1), m: new THREE.Matrix4().compose(V, Q, S) });
   }
-  return mergeGeos(parts);
+  return normalesDeVolumen(mergeGeos(parts), 0.62, 1.15, 0.55);
 }
-function coneFoliage(capas){
-  const parts = [];
-  for (let i = 0; i < capas; i++){
-    const t = i / (capas - 1), r = 1 - t * 0.72, hh = 0.44 - t * 0.14, y = t * 0.66;
-    const g = new THREE.ConeGeometry(r, hh, 8); g.translate(0, y + hh * 0.5, 0);
-    parts.push({ geo: g, m: null });
+
+/* conífera: pisos de ramillas que salen del eje y caen; la silueta dentada sale
+   del alfa de la ramilla, no de un cono con más segmentos */
+function cardConifer(pisos, porPiso, semilla){
+  const parts = [], rnd = mulberry32(semilla);
+  const EJE_Y = new THREE.Vector3(0, 1, 0), EJE_Z = new THREE.Vector3(0, 0, 1), EJE_X = new THREE.Vector3(1, 0, 0);
+  const qy = new THREE.Quaternion(), qz = new THREE.Quaternion(), qx = new THREE.Quaternion();
+  const V = new THREE.Vector3(), S = new THREE.Vector3();
+  for (let i = 0; i < pisos; i++){
+    const t = i / (pisos - 1);
+    const r = 1 - t * 0.70;                       // el piso de arriba es el más corto
+    const y = 0.04 + t * 0.88;
+    for (let j = 0; j < porPiso; j++){
+      const a = (j / porPiso) * 6.283 + i * 0.83 + rnd() * 0.25;
+      const largo = r * (0.78 + rnd() * 0.24);
+      const caida = -0.22 - rnd() * 0.24 - t * 0.1;
+      // 1 × 0,75 y escala igual en x y z: la proporción del plano tiene que ser la
+      // de la textura (256×192) o la ramilla sale estirada como un alambre
+      const g = new THREE.PlaneGeometry(1, 0.75);
+      g.rotateX(-Math.PI / 2);                    // tumbada
+      g.translate(0.5, 0, 0);                     // anclada al tronco por un extremo
+      qy.setFromAxisAngle(EJE_Y, a);
+      qz.setFromAxisAngle(EJE_Z, caida);
+      qx.setFromAxisAngle(EJE_X, (rnd() - 0.5) * 0.5);   // alabeo, que no queden planas
+      V.set(0, y, 0);
+      S.set(largo, 1, largo);
+      parts.push({ geo: g, m: new THREE.Matrix4().compose(V, qy.clone().multiply(qz).multiply(qx), S) });
+    }
   }
-  return mergeGeos(parts);
+  return normalesDeVolumen(mergeGeos(parts), 0.5, 0.45, 0.5);
 }
-const N_BLOB = isTouch ? 3 : 5, N_CAPA = isTouch ? 3 : 4;
-const geoPino = coneFoliage(N_CAPA), geoCopa = blobFoliage(N_BLOB, 0.62, 0.42);
+
+const N_HOJA = isTouch ? 9 : 17;
+const N_PISO = isTouch ? 4 : 6, N_RAMA = isTouch ? 6 : 9;
+const geoPino = cardConifer(N_PISO, N_RAMA, 5171), geoCopa = cardCrown(N_HOJA, 0.60, 0.46, 7331);
+
+/* Las sombras necesitan su propio material: three r128 no traslada map ni
+   alphaTest al paso de profundidad, así que sin esto los árboles proyectarían
+   la sombra de los rectángulos enteros en vez de la de las hojas. */
+function depthDeCopa(tex){
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking,
+    map: tex, alphaTest: ALFA_COPA, side: THREE.DoubleSide });
+  addSway(m, 0.010);                    // que la sombra se mueva con la copa
+  return m;
+}
+const depthHoja = depthDeCopa(leafCardTex), depthAcicula = depthDeCopa(needleTex);
 
 /* especies: alturas, copa y lo que dan al cortar */
 const SPECIES = {
@@ -715,6 +845,7 @@ function buildChunk(ci, cj){
     const list = bySp[name], sp = SPECIES[name];
     const trunkIM = new THREE.InstancedMesh(sp.geo, sp.trunk === 'birch' ? birchMat : barkMat, list.length);
     const folIM = new THREE.InstancedMesh(sp.fol === 'pine' ? geoPino : geoCopa, sp.folMat, list.length);
+    folIM.customDepthMaterial = sp.fol === 'pine' ? depthAcicula : depthHoja;
     trunkIM.castShadow = folIM.castShadow = true; trunkIM.receiveShadow = true;
     list.forEach((t, k) => {
       Q.setFromAxisAngle(AXIS, t.rot);
@@ -2378,3 +2509,36 @@ TOOLS.cuchillo.visible = true;
 drawHotbar();
 requestAnimationFrame(frame);
 
+
+/* Solo en desarrollo: Vite lo elimina del build de producción. Permite mover la
+   hora y mirar la escena sin tener que jugar hasta el mediodía. */
+if (import.meta.env && import.meta.env.DEV){
+  window.raizDev = {
+    scene, renderer, camera, player, cesped, structures,
+    // qué hay bajo un punto de pantalla, en coordenadas normalizadas (-1..1)
+    queEsEso(nx, ny){
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera({ x: nx, y: ny }, camera);
+      return rc.intersectObjects(scene.children, true).slice(0, 4).map(h => ({
+        dist: +h.distance.toFixed(1), tipo: h.object.type, geo: h.object.geometry?.type,
+        mat: h.object.material?.type, color: h.object.material?.color?.getHexString?.(),
+        instancia: h.instanceId, escala: h.object.scale.toArray().map(n => +n.toFixed(2))
+      }));
+    },
+    // corre el bucle sin pointer lock: en pausa updateWorld no actualiza cielo ni sol
+    correr(){ paused = false; const v = document.querySelector('#veil'); if (v) v.style.display = 'none'; },
+    parar(){ paused = true; },
+    get hora(){ return timeOfDay; },
+    set hora(v){ timeOfDay = v; },
+    get calidad(){ return calidad; },
+    // teleporte con reconstrucción: el bucle no actualiza el mundo en pausa
+    ir(x, z, yaw){
+      player.pos.set(x, heightAt(x, z), z);
+      if (yaw !== undefined) player.yaw = yaw;
+      limpiarMundo(); updateChunks();
+      cespedFull = true; updateCesped();
+      player.pos.y = heightAt(x, z);
+    },
+    mirar(yaw, pitch){ player.yaw = yaw; if (pitch !== undefined) player.pitch = pitch; }
+  };
+}
