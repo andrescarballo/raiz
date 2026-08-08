@@ -1459,7 +1459,8 @@ function toggleBook(force){
   bookOpen = force !== undefined ? force : !bookOpen;
   book.style.display = bookOpen ? 'block' : 'none';
   if (bookOpen){ renderBook(); if (document.pointerLockElement) document.exitPointerLock(); }
-  else if (!isTouch && !paused) renderer.domElement.requestPointerLock();
+  else if (!isTouch && !paused) requestMouseLock();
+  updateMouseHint();
 }
 
 /* ---------- 9. acciones ---------- */
@@ -2078,8 +2079,17 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('wheel', e => { if (buildMode) cycleBuild(e.deltaY > 0 ? 1 : -1); }, { passive: true });
+const mouseHint = $('#mouseHint');
+function updateMouseHint(){
+  if (mouseHint) mouseHint.style.display =
+    (!isTouch && !paused && !bookOpen && document.pointerLockElement !== renderer.domElement) ? 'block' : 'none';
+}
+function requestMouseLock(){
+  if (isTouch || !renderer.domElement.requestPointerLock) return;
+  renderer.domElement.requestPointerLock().catch(() => updateMouseHint());
+}
 renderer.domElement.addEventListener('click', () => {
-  if (!paused && !isTouch && !bookOpen && !document.pointerLockElement) renderer.domElement.requestPointerLock();
+  if (!paused && !isTouch && !bookOpen && !document.pointerLockElement) requestMouseLock();
 });
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== renderer.domElement) return;
@@ -2088,6 +2098,7 @@ addEventListener('mousemove', e => {
 });
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && !bookOpen && !paused && !isTouch) showVeil('pausa');
+  updateMouseHint();
 });
 
 /* táctil */
@@ -2250,7 +2261,6 @@ function start(){
   paused = false; dead = false;
   veil.style.display = 'none';
   toggleBook(false);
-  if (!isTouch) renderer.domElement.requestPointerLock();
 }
 function respawn(){
   player.salud = 100; player.energia = 80; player.agua = 80; player.temp = 36.8; player.mojado = 0; player.vigor = 100;
