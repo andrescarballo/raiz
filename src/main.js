@@ -2137,7 +2137,14 @@ function updateMouseHint(){
 }
 function requestMouseLock(){
   if (isTouch || !renderer.domElement.requestPointerLock) return;
-  renderer.domElement.requestPointerLock().catch(() => updateMouseHint());
+  // unadjustedMovement pide al SO los deltas de ratón "en crudo", sin pasar por
+  // el pipeline de aceleración/composición del sistema — en Linux (sobre todo
+  // Wayland) ese pipeline es el que a veces deja de entregar movimiento relativo
+  // con la Pointer Lock API normal. Si el navegador no soporta la opción,
+  // reintenta sin ella.
+  renderer.domElement.requestPointerLock({ unadjustedMovement: true }).catch(() => {
+    renderer.domElement.requestPointerLock().catch(() => updateMouseHint());
+  });
 }
 renderer.domElement.addEventListener('click', () => {
   if (!paused && !isTouch && !bookOpen && !document.pointerLockElement) requestMouseLock();
