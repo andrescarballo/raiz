@@ -23,7 +23,7 @@ Sirve como base para decidir qué se implementa y en qué orden. No todo entra: 
 | Hierba alta y baja, maleza, troncos caídos, tocones huecos, pedruscos | hecho |
 | Audio sintetizado: viento, lluvia, fuego, arroyo, pasos, aves | hecho |
 | Persistencia total (diff del mundo) y calidad gráfica configurable | hecho |
-| Construcción modular de base (postes, vigas, zarzo, cubierta — ya da abrigo real) | parcial |
+| Construcción modular de base (postes, vigas, 3 tipos de pared, cubierta — ya da abrigo real) | parcial |
 | Desmontar, mover y reforzar calidad — cualquier estructura (fogata, refugio, cama, trampa, recogedor, filtro, secadero, piezas modulares) | hecho |
 | Cerámica, huerto, estaciones | pendiente |
 
@@ -368,14 +368,15 @@ fuego → cordel → herramientas → refugio → trampas → caza mayor → cer
 
 El refugio de emergencia es de una pieza. La base no: se levanta módulo a módulo, y cada módulo tiene su calidad.
 
-**Implementado (modo `B`):** poste (rejilla de 1 m con imán a postes cercanos), viga y pared de zarzo
-(exigen apoyarse entre dos postes a 1,1–3,4 m), cubierta de corteza (exige apoyarse entre dos vigas
-paralelas separadas 1–3,6 m: calcula el centro, el ángulo y el vano del tramo), fantasma verde/rojo
-según validez y material disponible. Con estas cuatro piezas ya se puede levantar un refugio módulo a
-módulo — postes, vigas, una pared de zarzo y un techo — que da tanto abrigo (`shelterQ`) como el
-refugio de una pieza.
+**Implementado (modo `B`):** poste (rejilla de 1 m con imán a postes cercanos); viga, pared de zarzo,
+pared de troncos y panel de corteza (exigen apoyarse entre dos postes a 1,1–3,4 m — misma pieza
+genérica `PAIR_SHAPE`, solo cambia grosor/alto/material); cubierta de corteza (exige apoyarse entre
+dos vigas paralelas separadas 1–3,6 m: calcula el centro, el ángulo y el vano del tramo); fantasma
+verde/rojo según validez y material disponible. Con estas piezas ya se puede levantar un refugio
+módulo a módulo — postes, vigas, una pared (zarzo/troncos/corteza, a elegir) y un techo — que da
+tanto abrigo (`shelterQ`) como el refugio de una pieza.
 
-**Gestión de cualquier estructura ya puesta** (postes/vigas/zarzo/cubiertas y también fogata, refugio,
+**Gestión de cualquier estructura ya puesta** (piezas modulares y también fogata, refugio,
 cama, trampa, recogedor de lluvia, filtro y secadero — no hace falta estar en modo construir):
 - **`G` Desmontar** — apunta con cuchillo o hacha en mano, devuelve la mitad del coste original.
 - **`H` Mover** — la recoges (gratis), aparece un fantasma que sigue tu mirada (postes/vigas respetan
@@ -385,8 +386,9 @@ cama, trampa, recogedor de lluvia, filtro y secadero — no hace falta estar en 
   calidad al fabricarla) sube la calidad de una estructura ya construida, sin tener que rehacerla.
 
 **Pendiente:** nivelar terreno, revoco, suelo, la cubierta a un/dos aguas con ángulo real (la actual
-es un panel plano sin pendiente), el resto del catálogo de piezas (§ tabla siguiente) y el concepto
-de interior/humo.
+es un panel plano sin pendiente), puertas/ventanas/escaleras/cercas (§ tabla siguiente), y el concepto
+de interior/humo — hoy las paredes no cortan el viento ni la lluvia por sí solas, solo cuentan
+`shelter`/`roof` para `shelterQ`.
 
 ### Rejilla y colocación
 - Rejilla blanda de **1 m** con imán a los postes ya puestos: las piezas encajan solas pero el conjunto no parece de cubos.
@@ -410,9 +412,9 @@ Cada capa se puede saltar; el resultado simplemente será peor.
 |---|---|---|
 | Poste | tronco / palo grueso | base de todo |
 | Viga | tronco troceado | une postes, sostiene cubierta |
-| Pared de zarzo | varas + cordel | ligera, poco aislante |
-| Pared de troncos | leña + muescas | pesada, muy aislante |
-| Panel de corteza | corteza + cordel | impermeable |
+| Pared de zarzo | varas + cordel | hecho — ligera, poco aislante |
+| Pared de troncos | leña | hecho — pesada, muy aislante (visual/coste; aún no bloquea viento) |
+| Panel de corteza | corteza + cordel | hecho — impermeable (visual/coste; aún no bloquea viento) |
 | Cubierta de corteza | corteza (entre dos vigas paralelas) | hecho — falta el ángulo (a un/dos aguas) |
 | Tarima elevada | troncos + cordel | evita el frío del suelo y las alimañas |
 | Puerta de zarzo | varas + bisagra de cuero | cierra el interior |

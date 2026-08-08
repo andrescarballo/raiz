@@ -1535,6 +1535,16 @@ function terrainNormal(x, z){
   return new THREE.Vector3(heightAt(x - d, z) - heightAt(x + d, z), 2 * d,
                            heightAt(x, z - d) - heightAt(x, z + d)).normalize();
 }
+// piezas modulares que son un simple panel/listón entre dos apoyos ('pair' entre postes
+// o 'roof' entre vigas): w = grosor/ancho (o 'wid' para usar el vano calculado), h = alto,
+// yOff = altura del centro sobre el suelo, mat = material.
+const PAIR_SHAPE = {
+  viga:         { w: 0.14, h: 0.14, yOff: 1.55, mat: woodMat },
+  zarzo:        { w: 0.12, h: 1.5,  yOff: 0.75, mat: dryMat },
+  paredTroncos: { w: 0.22, h: 1.5,  yOff: 0.75, mat: woodMat },
+  panelCorteza: { w: 0.08, h: 1.5,  yOff: 0.75, mat: barkMat },
+  roof:         { w: 'wid', h: 0.12, yOff: 1.85, mat: dryMat }
+};
 function placeStructure(type, x, z, data){
   // altura media de la huella, no un solo punto: así no flota ni se hunde
   const y = (heightAt(x - 1.2, z) + heightAt(x + 1.2, z) + heightAt(x, z - 1.2) + heightAt(x, z + 1.2)) / 4;
@@ -1560,10 +1570,6 @@ function placeStructure(type, x, z, data){
     const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 1.4), bushMat);
     b.rotation.x = -0.7; b.position.set(0, 1.12, -0.55); g.add(b);
     unlock('refugio');
-  } else if (type === 'roof'){
-    const len = (data && data.len) || 2, wid = (data && data.wid) || 1.5;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(wid, 0.12, len), dryMat);
-    m.position.y = 1.85; m.castShadow = true; g.add(m);
   } else if (type === 'catcher'){
     const emb = new THREE.Mesh(new THREE.ConeGeometry(0.85, 0.55, 10, 1, true), woodMat);
     emb.rotation.x = Math.PI; emb.position.y = 1.15; emb.castShadow = true; g.add(emb);
@@ -1598,14 +1604,12 @@ function placeStructure(type, x, z, data){
   } else if (type === 'poste'){
     const m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.8, 6), woodMat);
     m.position.y = 0.9; m.castShadow = true; g.add(m);
-  } else if (type === 'viga'){
+  } else if (PAIR_SHAPE[type]){
+    const shape = PAIR_SHAPE[type];
     const len = (data && data.len) || 2;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, len), woodMat);
-    m.position.y = 1.55; m.castShadow = true; g.add(m);
-  } else if (type === 'zarzo'){
-    const len = (data && data.len) || 2;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.5, len), dryMat);
-    m.position.y = 0.75; m.castShadow = true; g.add(m);
+    const w = shape.w === 'wid' ? (data && data.wid) || 1.5 : shape.w;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, shape.h, len), shape.mat);
+    m.position.y = shape.yOff; m.castShadow = true; g.add(m);
   }
   if (data) Object.assign(st, data);
   scene.add(g);
@@ -1618,6 +1622,8 @@ const PIEZAS = [
   { id: 'poste', name: 'Poste', cost: { palo: 2 }, need: 'grid' },
   { id: 'viga', name: 'Viga', cost: { palo: 2, cordel: 1 }, need: 'pair' },
   { id: 'zarzo', name: 'Pared de zarzo', cost: { palo: 4, cordel: 1 }, need: 'pair' },
+  { id: 'paredTroncos', name: 'Pared de troncos', cost: { lena: 6 }, need: 'pair' },
+  { id: 'panelCorteza', name: 'Panel de corteza', cost: { corteza: 5, cordel: 1 }, need: 'pair' },
   { id: 'roof', name: 'Cubierta de corteza', cost: { corteza: 5 }, need: 'roof' }
 ];
 let buildMode = false, buildI = 0, ghostValid = false, ghostData = null;
@@ -1727,13 +1733,11 @@ function updateBuildGhost(){
   ghostPoste.visible = piece.need === 'grid';
   ghostBand.visible = piece.need === 'pair' || piece.need === 'roof';
   if (piece.need === 'pair' || piece.need === 'roof'){
+    const shape = PAIR_SHAPE[piece.id];
+    const w = shape.w === 'wid' ? Math.max(wid, 0.2) : shape.w;
     ghostBand.geometry.dispose();
-    ghostBand.geometry = piece.id === 'zarzo'
-      ? new THREE.BoxGeometry(0.12, 1.5, Math.max(len, 0.2))
-      : piece.id === 'roof'
-      ? new THREE.BoxGeometry(Math.max(wid, 0.2), 0.12, Math.max(len, 0.2))
-      : new THREE.BoxGeometry(0.14, 0.14, Math.max(len, 0.2));
-    ghostBand.position.y = piece.id === 'zarzo' ? 0.75 : piece.id === 'roof' ? 1.85 : 1.55;
+    ghostBand.geometry = new THREE.BoxGeometry(w, shape.h, Math.max(len, 0.2));
+    ghostBand.position.y = shape.yOff;
   }
   ghostMat.color.set(ok ? 0x6fbf5c : 0xcf4b3a);
   ghostGroup.position.set(pos.x, heightAt(pos.x, pos.z), pos.z);
@@ -1802,7 +1806,6 @@ const FOOTPRINT = {
   trap: [0.6, 0.2, 0.6], catcher: [0.9, 1.3, 0.9], filtro: [0.8, 1.1, 0.8],
   secadero: [2.0, 1.7, 0.7], poste: [0.24, 1.8, 0.24]
 };
-const MOVE_YOFF = { zarzo: 0.75, viga: 1.55, roof: 1.85 };
 function startMove(){
   if (buildMode || cargando) return;
   const s = findNearStructure(3.4);
@@ -1816,19 +1819,20 @@ function startMove(){
 function updateMoveGhost(){
   const fwd = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
   const raw = { x: player.pos.x + fwd.x * 2.0, z: player.pos.z + fwd.z * 2.0 };
-  const need = cargando.type === 'poste' ? 'grid' : (cargando.type === 'viga' || cargando.type === 'zarzo') ? 'pair' :
-    cargando.type === 'roof' ? 'roof' : 'front';
+  const need = cargando.type === 'poste' ? 'grid' : cargando.type === 'roof' ? 'roof' :
+    PAIR_SHAPE[cargando.type] ? 'pair' : 'front';
   const r = computePlacement(need, null, raw, cargando.type);
   moveData = { x: r.pos.x, z: r.pos.z, rotY: r.rotY, len: r.len, wid: r.wid };
   moveGhost.geometry.dispose();
   let dims = FOOTPRINT[cargando.type];
+  const shape = PAIR_SHAPE[cargando.type];
   if (!dims){
-    dims = cargando.type === 'zarzo' ? [0.12, 1.5, Math.max(r.len || cargando.len || 2, 0.2)]
-      : cargando.type === 'roof' ? [Math.max(r.wid || cargando.wid || 1.5, 0.2), 0.12, Math.max(r.len || cargando.len || 2, 0.2)]
+    dims = shape
+      ? [shape.w === 'wid' ? Math.max(r.wid || cargando.wid || 1.5, 0.2) : shape.w, shape.h, Math.max(r.len || cargando.len || 2, 0.2)]
       : [0.14, 0.14, Math.max(r.len || cargando.len || 2, 0.2)];
   }
   moveGhost.geometry = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
-  const yOff = MOVE_YOFF[cargando.type] !== undefined ? MOVE_YOFF[cargando.type] : dims[1] / 2;
+  const yOff = shape ? shape.yOff : dims[1] / 2;
   moveGhost.position.set(r.pos.x, heightAt(r.pos.x, r.pos.z) + yOff, r.pos.z);
   moveGhost.rotation.y = r.rotY;
   moveMat.color.set(r.ok ? 0x6fbf5c : 0xcf4b3a);
