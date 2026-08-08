@@ -1537,14 +1537,18 @@ function terrainNormal(x, z){
 }
 // piezas modulares que son un simple panel/listón entre dos apoyos ('pair' entre postes
 // o 'roof' entre vigas): w = grosor/ancho (o 'wid' para usar el vano calculado), h = alto,
-// yOff = altura del centro sobre el suelo, mat = material.
+// yOff = altura del centro sobre el suelo, mat = material, blocks = si es una pared que
+// cierra el paso (viga y cubierta quedan por encima de la cabeza y no bloquean).
 const PAIR_SHAPE = {
   viga:         { w: 0.14, h: 0.14, yOff: 1.55, mat: woodMat },
-  zarzo:        { w: 0.12, h: 1.5,  yOff: 0.75, mat: dryMat },
-  paredTroncos: { w: 0.22, h: 1.5,  yOff: 0.75, mat: woodMat },
-  panelCorteza: { w: 0.08, h: 1.5,  yOff: 0.75, mat: barkMat },
+  zarzo:        { w: 0.12, h: 1.5,  yOff: 0.75, mat: dryMat, blocks: true },
+  paredTroncos: { w: 0.22, h: 1.5,  yOff: 0.75, mat: woodMat, blocks: true },
+  panelCorteza: { w: 0.08, h: 1.5,  yOff: 0.75, mat: barkMat, blocks: true },
   roof:         { w: 'wid', h: 0.12, yOff: 1.85, mat: dryMat }
 };
+// colisión del jugador con lo ya construido: un poste bloquea como un tronco fino,
+// una pared (zarzo/troncos/corteza) bloquea como un segmento entre sus dos postes.
+const COLLIDE_POSTE_R = 0.3, COLLIDE_WALL_R = 0.4;
 function placeStructure(type, x, z, data){
   // altura media de la huella, no un solo punto: así no flota ni se hunde
   const y = (heightAt(x - 1.2, z) + heightAt(x + 1.2, z) + heightAt(x, z - 1.2) + heightAt(x, z + 1.2)) / 4;
@@ -1604,6 +1608,13 @@ function placeStructure(type, x, z, data){
   } else if (type === 'poste'){
     const m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.8, 6), woodMat);
     m.position.y = 0.9; m.castShadow = true; g.add(m);
+  } else if (type === 'tarima'){
+    const tabla = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 1.6), woodMat);
+    tabla.position.y = 0.28; tabla.castShadow = true; g.add(tabla);
+    [[-0.85, -0.65], [0.85, -0.65], [-0.85, 0.65], [0.85, 0.65]].forEach(([lx, lz]) => {
+      const pata = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.26, 5), woodMat);
+      pata.position.set(lx, 0.1, lz); g.add(pata);
+    });
   } else if (PAIR_SHAPE[type]){
     const shape = PAIR_SHAPE[type];
     const len = (data && data.len) || 2;
@@ -1624,14 +1635,16 @@ const PIEZAS = [
   { id: 'zarzo', name: 'Pared de zarzo', cost: { palo: 4, cordel: 1 }, need: 'pair' },
   { id: 'paredTroncos', name: 'Pared de troncos', cost: { lena: 6 }, need: 'pair' },
   { id: 'panelCorteza', name: 'Panel de corteza', cost: { corteza: 5, cordel: 1 }, need: 'pair' },
-  { id: 'roof', name: 'Cubierta de corteza', cost: { corteza: 5 }, need: 'roof' }
+  { id: 'roof', name: 'Cubierta de corteza', cost: { corteza: 5 }, need: 'roof' },
+  { id: 'tarima', name: 'Tarima elevada', cost: { palo: 5, cordel: 1 }, need: 'front' }
 ];
 let buildMode = false, buildI = 0, ghostValid = false, ghostData = null;
 const ghostMat = new THREE.MeshBasicMaterial({ color: 0x6fbf5c, transparent: true, opacity: 0.55, depthWrite: false });
 const ghostGroup = new THREE.Group();
 const ghostPoste = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 1.8, 6), ghostMat); ghostPoste.position.y = 0.9;
 const ghostBand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 1), ghostMat);
-ghostGroup.add(ghostPoste, ghostBand); ghostGroup.visible = false;
+const ghostFlat = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 1.6), ghostMat); ghostFlat.position.y = 0.28;
+ghostGroup.add(ghostPoste, ghostBand, ghostFlat); ghostGroup.visible = false;
 scene.add(ghostGroup);
 
 function canAfford(cost){ return !cost || Object.keys(cost).every(k => (inv[k] || 0) >= cost[k]); }
@@ -1732,6 +1745,7 @@ function updateBuildGhost(){
   ghostValid = ok;
   ghostPoste.visible = piece.need === 'grid';
   ghostBand.visible = piece.need === 'pair' || piece.need === 'roof';
+  ghostFlat.visible = piece.need === 'front';
   if (piece.need === 'pair' || piece.need === 'roof'){
     const shape = PAIR_SHAPE[piece.id];
     const w = shape.w === 'wid' ? Math.max(wid, 0.2) : shape.w;
@@ -1804,7 +1818,7 @@ scene.add(moveGhost);
 const FOOTPRINT = {
   fire: [1.1, 1.0, 1.1], shelter: [2.6, 1.4, 2.2], bed: [2.1, 0.3, 1.1],
   trap: [0.6, 0.2, 0.6], catcher: [0.9, 1.3, 0.9], filtro: [0.8, 1.1, 0.8],
-  secadero: [2.0, 1.7, 0.7], poste: [0.24, 1.8, 0.24]
+  secadero: [2.0, 1.7, 0.7], poste: [0.24, 1.8, 0.24], tarima: [2.0, 0.3, 1.6]
 };
 function startMove(){
   if (buildMode || cargando) return;
@@ -2500,6 +2514,18 @@ function updatePlayer(dt){
     if (blocked || t.felled) return;
     if ((nx - t.x) * (nx - t.x) + (nz - t.z) * (nz - t.z) < t.r * t.r) blocked = true;
   }));
+  if (!blocked) structures.forEach(s => {
+    if (blocked) return;
+    if (s.type === 'poste'){
+      const dx2 = nx - s.x, dz2 = nz - s.z;
+      if (dx2 * dx2 + dz2 * dz2 < COLLIDE_POSTE_R * COLLIDE_POSTE_R) blocked = true;
+    } else if (PAIR_SHAPE[s.type] && PAIR_SHAPE[s.type].blocks){
+      const half = (s.len || 2) / 2;
+      const dirx = Math.sin(s.rotY), dirz = Math.cos(s.rotY);
+      const ax = s.x - dirx * half, az = s.z - dirz * half, bx = s.x + dirx * half, bz = s.z + dirz * half;
+      if (pointSegDist(nx, nz, ax, az, bx, bz) < COLLIDE_WALL_R) blocked = true;
+    }
+  });
   if (!blocked){ player.pos.x = nx; player.pos.z = nz; }
 
   if (nadando){
