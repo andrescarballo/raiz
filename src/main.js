@@ -1560,12 +1560,9 @@ function placeStructure(type, x, z, data){
     b.rotation.x = -0.7; b.position.set(0, 1.12, -0.55); g.add(b);
     unlock('refugio');
   } else if (type === 'roof'){
-    const m = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 2.8), woodMat);
-    m.rotation.x = -0.35; m.position.set(0, 1.9, 0); m.castShadow = true; g.add(m);
-    for (let i = -1; i <= 1; i += 2){
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 2, 5), woodMat);
-      post.position.set(i * 1.3, 1, 1.2); g.add(post);
-    }
+    const len = (data && data.len) || 2, wid = (data && data.wid) || 1.5;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(wid, 0.12, len), dryMat);
+    m.position.y = 1.85; m.castShadow = true; g.add(m);
   } else if (type === 'catcher'){
     const emb = new THREE.Mesh(new THREE.ConeGeometry(0.85, 0.55, 10, 1, true), woodMat);
     emb.rotation.x = Math.PI; emb.position.y = 1.15; emb.castShadow = true; g.add(emb);
@@ -1619,7 +1616,8 @@ function placeStructure(type, x, z, data){
 const PIEZAS = [
   { id: 'poste', name: 'Poste', cost: { palo: 2 }, need: 'grid' },
   { id: 'viga', name: 'Viga', cost: { palo: 2, cordel: 1 }, need: 'pair' },
-  { id: 'zarzo', name: 'Pared de zarzo', cost: { palo: 4, cordel: 1 }, need: 'pair' }
+  { id: 'zarzo', name: 'Pared de zarzo', cost: { palo: 4, cordel: 1 }, need: 'pair' },
+  { id: 'roof', name: 'Cubierta de corteza', cost: { corteza: 5 }, need: 'roof' }
 ];
 let buildMode = false, buildI = 0, ghostValid = false, ghostData = null;
 const ghostMat = new THREE.MeshBasicMaterial({ color: 0x6fbf5c, transparent: true, opacity: 0.55, depthWrite: false });
@@ -1639,10 +1637,11 @@ function pointSegDist(px, pz, ax, az, bx, bz){
   return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
 }
 // resuelve dónde cae una pieza según su tipo de apoyo: 'grid' (rejilla+imán a postes),
-// 'pair' (necesita dos postes cerca) o 'front' (colocación libre, como fogata/refugio/cama).
-// cost=null cuando la colocación es gratis (mover algo que ya existía).
+// 'pair' (necesita dos postes cerca), 'roof' (necesita dos vigas paralelas cerca) o
+// 'front' (colocación libre, como fogata/refugio/cama). cost=null cuando la colocación
+// es gratis (mover algo que ya existía).
 function computePlacement(need, cost, raw, dupType){
-  let pos, rotY = player.yaw, len = 2, reason = '';
+  let pos, rotY = player.yaw, len = 2, wid = 1.5, reason = '';
   if (need === 'grid'){
     const ps = postes();
     pos = { x: Math.round(raw.x), z: Math.round(raw.z) };
@@ -1672,6 +1671,31 @@ function computePlacement(need, cost, raw, dupType){
     } else {
       pos = raw; reason = 'Necesita dos postes cerca (entre 1,1 y 3,4 m).';
     }
+  } else if (need === 'roof'){
+    const vs = structures.filter(s => s.type === 'viga');
+    let best = null, bestScore = 1e9;
+    for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++){
+      const a = vs[i], b = vs[j];
+      let dAng = (a.rotY - b.rotY) % Math.PI;
+      if (dAng < 0) dAng += Math.PI;
+      if (dAng > Math.PI / 2) dAng = Math.PI - dAng;
+      if (dAng > 0.35) continue;
+      const gap = Math.abs((b.x - a.x) * Math.cos(a.rotY) - (b.z - a.z) * Math.sin(a.rotY));
+      if (gap < 1.0 || gap > 3.6) continue;
+      const midx = (a.x + b.x) / 2, midz = (a.z + b.z) / 2;
+      const dRaw = Math.hypot(raw.x - midx, raw.z - midz);
+      if (dRaw < bestScore){ bestScore = dRaw; best = { a, b, midx, midz, gap }; }
+    }
+    if (best){
+      pos = { x: best.midx, z: best.midz };
+      rotY = best.a.rotY;
+      len = Math.min(best.a.len || 2, best.b.len || 2);
+      wid = best.gap;
+      const dup = dupType && structures.some(s => s.type === dupType && Math.hypot(s.x - pos.x, s.z - pos.z) < 0.4);
+      reason = dup ? 'Ya hay una cubierta ahí.' : !canAfford(cost) ? 'Falta material.' : '';
+    } else {
+      pos = raw; reason = 'Necesita dos vigas paralelas cerca (entre 1 y 3,6 m).';
+    }
   } else {
     pos = raw;
     const distPlayer = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
@@ -1680,7 +1704,7 @@ function computePlacement(need, cost, raw, dupType){
     reason = overlap ? 'Muy cerca de otra cosa.' : enAgua ? 'Ahí es agua.' : distPlayer > 3.6 ? 'Demasiado lejos.' :
       !canAfford(cost) ? 'Falta material.' : '';
   }
-  return { pos, rotY, len, ok: !reason, reason };
+  return { pos, rotY, len, wid, ok: !reason, reason };
 }
 function setBuildMode(on){
   if (on && cargando) return;
@@ -1696,17 +1720,19 @@ function updateBuildGhost(){
   const fwd = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
   const raw = { x: player.pos.x + fwd.x * 2.2, z: player.pos.z + fwd.z * 2.2 };
   const r = computePlacement(piece.need, piece.cost, raw, piece.id);
-  const pos = r.pos, rotY = r.rotY, len = r.len, ok = r.ok, reason = r.reason;
-  ghostData = { piece, x: pos.x, z: pos.z, rotY, len };
+  const pos = r.pos, rotY = r.rotY, len = r.len, wid = r.wid, ok = r.ok, reason = r.reason;
+  ghostData = { piece, x: pos.x, z: pos.z, rotY, len, wid };
   ghostValid = ok;
   ghostPoste.visible = piece.need === 'grid';
-  ghostBand.visible = piece.need === 'pair';
-  if (piece.need === 'pair'){
+  ghostBand.visible = piece.need === 'pair' || piece.need === 'roof';
+  if (piece.need === 'pair' || piece.need === 'roof'){
     ghostBand.geometry.dispose();
     ghostBand.geometry = piece.id === 'zarzo'
       ? new THREE.BoxGeometry(0.12, 1.5, Math.max(len, 0.2))
+      : piece.id === 'roof'
+      ? new THREE.BoxGeometry(Math.max(wid, 0.2), 0.12, Math.max(len, 0.2))
       : new THREE.BoxGeometry(0.14, 0.14, Math.max(len, 0.2));
-    ghostBand.position.y = piece.id === 'zarzo' ? 0.75 : 1.55;
+    ghostBand.position.y = piece.id === 'zarzo' ? 0.75 : piece.id === 'roof' ? 1.85 : 1.55;
   }
   ghostMat.color.set(ok ? 0x6fbf5c : 0xcf4b3a);
   ghostGroup.position.set(pos.x, heightAt(pos.x, pos.z), pos.z);
@@ -1717,9 +1743,9 @@ function updateBuildGhost(){
 }
 function tryPlaceGhost(){
   if (!ghostData || !ghostValid) return;
-  const { piece, x, z, rotY, len } = ghostData;
+  const { piece, x, z, rotY, len, wid } = ghostData;
   payCost(piece.cost);
-  placeStructure(piece.id, x, z, { rotY, len, q: 1 });
+  placeStructure(piece.id, x, z, { rotY, len, wid, q: 1 });
   unlock('construccion');
   log(piece.name + (piece.id === 'poste' ? ' hincado.' : ' colocada.'));
   swing = 1;
@@ -1775,11 +1801,12 @@ const FOOTPRINT = {
   trap: [0.6, 0.2, 0.6], catcher: [0.9, 1.3, 0.9], filtro: [0.8, 1.1, 0.8],
   secadero: [2.0, 1.7, 0.7], poste: [0.24, 1.8, 0.24]
 };
+const MOVE_YOFF = { zarzo: 0.75, viga: 1.55, roof: 1.85 };
 function startMove(){
   if (buildMode || cargando) return;
   const s = findNearStructure(3.4);
   if (!s){ log('Nada delante para mover.'); return; }
-  cargando = { type: s.type, q: s.q === undefined ? 1 : s.q, len: s.len, origX: s.x, origZ: s.z, origRotY: s.rotY };
+  cargando = { type: s.type, q: s.q === undefined ? 1 : s.q, len: s.len, wid: s.wid, origX: s.x, origZ: s.z, origRotY: s.rotY };
   scene.remove(s.group);
   const i = structures.indexOf(s); if (i >= 0) structures.splice(i, 1);
   moveGhost.visible = true;
@@ -1788,14 +1815,20 @@ function startMove(){
 function updateMoveGhost(){
   const fwd = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
   const raw = { x: player.pos.x + fwd.x * 2.0, z: player.pos.z + fwd.z * 2.0 };
-  const need = cargando.type === 'poste' ? 'grid' : (cargando.type === 'viga' || cargando.type === 'zarzo') ? 'pair' : 'front';
+  const need = cargando.type === 'poste' ? 'grid' : (cargando.type === 'viga' || cargando.type === 'zarzo') ? 'pair' :
+    cargando.type === 'roof' ? 'roof' : 'front';
   const r = computePlacement(need, null, raw, cargando.type);
-  moveData = { x: r.pos.x, z: r.pos.z, rotY: r.rotY, len: r.len };
+  moveData = { x: r.pos.x, z: r.pos.z, rotY: r.rotY, len: r.len, wid: r.wid };
   moveGhost.geometry.dispose();
   let dims = FOOTPRINT[cargando.type];
-  if (!dims) dims = [0.14, cargando.type === 'zarzo' ? 1.5 : 0.14, Math.max(r.len || cargando.len || 2, 0.2)];
+  if (!dims){
+    dims = cargando.type === 'zarzo' ? [0.12, 1.5, Math.max(r.len || cargando.len || 2, 0.2)]
+      : cargando.type === 'roof' ? [Math.max(r.wid || cargando.wid || 1.5, 0.2), 0.12, Math.max(r.len || cargando.len || 2, 0.2)]
+      : [0.14, 0.14, Math.max(r.len || cargando.len || 2, 0.2)];
+  }
   moveGhost.geometry = new THREE.BoxGeometry(dims[0], dims[1], dims[2]);
-  moveGhost.position.set(r.pos.x, heightAt(r.pos.x, r.pos.z) + dims[1] / 2, r.pos.z);
+  const yOff = MOVE_YOFF[cargando.type] !== undefined ? MOVE_YOFF[cargando.type] : dims[1] / 2;
+  moveGhost.position.set(r.pos.x, heightAt(r.pos.x, r.pos.z) + yOff, r.pos.z);
   moveGhost.rotation.y = r.rotY;
   moveMat.color.set(r.ok ? 0x6fbf5c : 0xcf4b3a);
   moveValid = r.ok;
@@ -1805,14 +1838,14 @@ function updateMoveGhost(){
 }
 function confirmMove(){
   if (!cargando || !moveValid || !moveData) return;
-  placeStructure(cargando.type, moveData.x, moveData.z, { rotY: moveData.rotY, len: moveData.len, q: cargando.q });
+  placeStructure(cargando.type, moveData.x, moveData.z, { rotY: moveData.rotY, len: moveData.len, wid: moveData.wid, q: cargando.q });
   log(nombreEstructura(cargando.type) + ' colocada de nuevo.');
   moveGhost.visible = false; cargando = null; moveData = null; promptEl.classList.remove('on');
   save(true);
 }
 function cancelMove(){
   if (!cargando) return;
-  placeStructure(cargando.type, cargando.origX, cargando.origZ, { rotY: cargando.origRotY, len: cargando.len, q: cargando.q });
+  placeStructure(cargando.type, cargando.origX, cargando.origZ, { rotY: cargando.origRotY, len: cargando.len, wid: cargando.wid, q: cargando.q });
   moveGhost.visible = false; cargando = null; moveData = null; promptEl.classList.remove('on');
   log('Dejas todo donde estaba.');
 }
@@ -2166,7 +2199,7 @@ function snapshot(){
          salud: player.salud, energia: player.energia, agua: player.agua, vigor: player.vigor,
          temp: player.temp, mojado: player.mojado, torch: player.torch, torchFuel: player.torchFuel },
     st: structures.map(s => ({ type: s.type, x: s.x, z: s.z, lit: s.lit, fuel: s.fuel,
-         ready: s.ready, timer: s.timer, q: s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len })),
+         ready: s.ready, timer: s.timer, q: s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len, wid: s.wid })),
     ts: Date.now()
   };
 }
@@ -2213,7 +2246,7 @@ function applySave(d){
   cespedFull = true; updateCesped();       // el jugador salta de sitio: rellena la alfombra entera
   if (d.p.y === undefined) player.pos.y = heightAt(d.p.x, d.p.z);
   (d.st || []).forEach(s => placeStructure(s.type, s.x, s.z, { lit: s.lit, fuel: s.fuel, ready: s.ready,
-    timer: s.timer, q: s.q === undefined ? 0.4 : s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len }));
+    timer: s.timer, q: s.q === undefined ? 0.4 : s.q, rotY: s.rotY, store: s.store, load: s.load, len: s.len, wid: s.wid }));
   drawPack(); drawVitals();
 }
 
