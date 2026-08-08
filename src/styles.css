@@ -38,6 +38,9 @@
   #prompt{position:absolute;left:50%;top:calc(50% + 34px);transform:translateX(-50%);
     color:var(--paper);font-size:15px;text-shadow:0 1px 4px rgba(0,0,0,.95);white-space:nowrap;opacity:0;transition:opacity .12s}
   #prompt.on{opacity:1}
+  #mouseHint{display:none;position:absolute;left:50%;top:calc(50% - 40px);transform:translateX(-50%);
+    color:var(--paper);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    text-shadow:0 1px 4px rgba(0,0,0,.95);white-space:nowrap}
   #prompt kbd{font-family:var(--mono);font-size:11px;border:1px solid rgba(255,255,255,.5);
     border-radius:3px;padding:1px 5px;margin-right:6px}
   #promptbar{position:absolute;left:50%;top:calc(50% + 58px);transform:translateX(-50%);
