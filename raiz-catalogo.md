@@ -368,6 +368,11 @@ fuego → cordel → herramientas → refugio → trampas → caza mayor → cer
 
 El refugio de emergencia es de una pieza. La base no: se levanta módulo a módulo, y cada módulo tiene su calidad.
 
+**Alcance: refugio bushcraft, no una casa.** El objetivo es lo que se puede levantar con lo que da el
+bosque y unas horas — lean-to, cabaña de armazón y zarzo, algo con techo y suelo — no una vivienda con
+revoco, aislamiento elaborado, puertas o ventanas. El revoco (cob) y el aislamiento térmico real se
+quedan fuera de alcance a propósito; no hace falta implementarlos.
+
 **Implementado (modo `B`):** poste (rejilla de 1 m con imán a postes cercanos); viga, pared de zarzo,
 pared de troncos y panel de corteza (exigen apoyarse entre dos postes a 1,1–3,4 m — misma pieza
 genérica `PAIR_SHAPE`, solo cambia grosor/alto/material); cubierta de corteza (exige apoyarse entre
@@ -391,10 +396,13 @@ cama, trampa, recogedor de lluvia, filtro y secadero — no hace falta estar en 
 - **`M` Reforzar** — con 2 unidades de un material de mejora de su receta (los mismos que suben la
   calidad al fabricarla) sube la calidad de una estructura ya construida, sin tener que rehacerla.
 
-**Pendiente:** nivelar terreno, revoco, la cubierta a un/dos aguas con ángulo real (la actual es un
-panel plano sin pendiente), puertas/ventanas/escaleras/cercas (§ tabla siguiente), y el concepto de
-interior/humo — las paredes ya bloquean el paso pero aún no cortan el viento ni la lluvia en la
+**Pendiente (dentro de alcance bushcraft):** nivelar terreno, la cubierta a un/dos aguas con ángulo
+real (la actual es un panel plano sin pendiente — encajaría bien con el lean-to y la cabaña de
+zarzo del §6). Las paredes ya bloquean el paso pero aún no cortan el viento ni la lluvia en la
 simulación, solo cuentan `shelter`/`roof` para `shelterQ`.
+
+**Fuera de alcance a propósito (eso ya es casa, no refugio bushcraft):** revoco/cob, aislamiento
+térmico elaborado, puertas, ventanas, escaleras y cercas.
 
 ### Rejilla y colocación
 - Rejilla blanda de **1 m** con imán a los postes ya puestos: las piezas encajan solas pero el conjunto no parece de cubos.
@@ -409,7 +417,7 @@ Cada capa se puede saltar; el resultado simplemente será peor.
 |---|---|---|
 | 1. Armazón | postes, vigas, cordel | forma, sin protección |
 | 2. Cerramiento | zarzo de varas, corteza, juncos, troncos | corta el viento |
-| 3. Revoco | barro + paja + agua (cob) | aislamiento térmico real |
+| 3. Revoco | barro + paja + agua (cob) | aislamiento térmico real — **fuera de alcance**: eso es casa, no refugio bushcraft |
 | 4. Cubierta | paja, corteza, tepe, juncos | estanqueidad a la lluvia (hecho: panel plano entre dos vigas) |
 | 5. Suelo | tarima de troncos, tepe, grava | evita humedad del suelo |
 
@@ -423,13 +431,16 @@ Cada capa se puede saltar; el resultado simplemente será peor.
 | Panel de corteza | corteza + cordel | hecho — impermeable, bloquea el paso |
 | Cubierta de corteza | corteza (entre dos vigas paralelas) | hecho — falta el ángulo (a un/dos aguas) |
 | Tarima elevada | palos + cordel | hecho — de momento solo visual, sin bonus de calidez |
-| Puerta de zarzo | varas + bisagra de cuero | cierra el interior |
-| Ventana / tronera | marco + postigo | luz sin perder tanto calor |
-| Escalera / rampa | troncos | acceso a altillo o desnivel |
-| Cerca / empalizada | estacas afiladas | animales fuera |
-| Seto de zarzas | zarzas trasplantadas | barrera viva, lenta |
+| Puerta de zarzo | varas + bisagra de cuero | **fuera de alcance** — cierra el interior, eso ya es casa |
+| Ventana / tronera | marco + postigo | **fuera de alcance** — luz sin perder tanto calor, eso ya es casa |
+| Escalera / rampa | troncos | **fuera de alcance** — acceso a altillo, eso ya es casa |
+| Cerca / empalizada | estacas afiladas | **fuera de alcance** — animales fuera, eso ya es casa |
+| Seto de zarzas | zarzas trasplantadas | **fuera de alcance** — barrera viva, eso ya es casa |
 
-### Interior: qué convierte un montón de palos en una casa
+### Interior: qué convierte un montón de palos en una casa — **fuera de alcance**
+Esta sección entera describe el salto de "refugio" a "casa" (volumen cerrado con clima propio,
+chimenea, goteras, pudrición). Se deja documentada por si algún día se retoma, pero no es el
+objetivo de §15: un refugio bushcraft no necesita interior simulado ni gestión de humo.
 - Un volumen cerrado (paredes + cubierta + suelo) pasa a contar como **interior**: sin lluvia, sin viento, temperatura propia que sube con el hogar.
 - **Humo**: si hay hogar dentro sin salida, el humo intoxica. Chimenea de barro o agujero de ventilación → resuelto (y ahuyenta insectos).
 - **Goteras**: la cubierta se degrada; con lluvia aparecen puntos de humedad hasta que reparas.
