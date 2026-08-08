@@ -23,7 +23,7 @@ Sirve como base para decidir qué se implementa y en qué orden. No todo entra: 
 | Hierba alta y baja, maleza, troncos caídos, tocones huecos, pedruscos | hecho |
 | Audio sintetizado: viento, lluvia, fuego, arroyo, pasos, aves | hecho |
 | Persistencia total (diff del mundo) y calidad gráfica configurable | hecho |
-| Construcción modular de base (postes, vigas, zarzo) | parcial |
+| Construcción modular de base (postes, vigas, zarzo, cubierta — ya da abrigo real) | parcial |
 | Desmontar, mover y reforzar calidad — cualquier estructura (fogata, refugio, cama, trampa, recogedor, filtro, secadero, piezas modulares) | hecho |
 | Cerámica, huerto, estaciones | pendiente |
 
@@ -369,10 +369,14 @@ fuego → cordel → herramientas → refugio → trampas → caza mayor → cer
 El refugio de emergencia es de una pieza. La base no: se levanta módulo a módulo, y cada módulo tiene su calidad.
 
 **Implementado (modo `B`):** poste (rejilla de 1 m con imán a postes cercanos), viga y pared de zarzo
-(exigen apoyarse entre dos postes a 1,1–3,4 m), fantasma verde/rojo según validez y material disponible.
+(exigen apoyarse entre dos postes a 1,1–3,4 m), cubierta de corteza (exige apoyarse entre dos vigas
+paralelas separadas 1–3,6 m: calcula el centro, el ángulo y el vano del tramo), fantasma verde/rojo
+según validez y material disponible. Con estas cuatro piezas ya se puede levantar un refugio módulo a
+módulo — postes, vigas, una pared de zarzo y un techo — que da tanto abrigo (`shelterQ`) como el
+refugio de una pieza.
 
-**Gestión de cualquier estructura ya puesta** (postes/vigas/zarzo y también fogata, refugio, cama,
-trampa, recogedor de lluvia, filtro y secadero — no hace falta estar en modo construir):
+**Gestión de cualquier estructura ya puesta** (postes/vigas/zarzo/cubiertas y también fogata, refugio,
+cama, trampa, recogedor de lluvia, filtro y secadero — no hace falta estar en modo construir):
 - **`G` Desmontar** — apunta con cuchillo o hacha en mano, devuelve la mitad del coste original.
 - **`H` Mover** — la recoges (gratis), aparece un fantasma que sigue tu mirada (postes/vigas respetan
   la misma rejilla/apoyo que al construir; el resto solo exige hueco libre y no estar en el agua),
@@ -380,8 +384,9 @@ trampa, recogedor de lluvia, filtro y secadero — no hace falta estar en modo c
 - **`M` Reforzar** — con 2 unidades de un material de mejora de su receta (los mismos que suben la
   calidad al fabricarla) sube la calidad de una estructura ya construida, sin tener que rehacerla.
 
-**Pendiente:** nivelar terreno, revoco, cubierta, suelo, el resto del catálogo de piezas
-(§ tabla siguiente) y el concepto de interior/humo.
+**Pendiente:** nivelar terreno, revoco, suelo, la cubierta a un/dos aguas con ángulo real (la actual
+es un panel plano sin pendiente), el resto del catálogo de piezas (§ tabla siguiente) y el concepto
+de interior/humo.
 
 ### Rejilla y colocación
 - Rejilla blanda de **1 m** con imán a los postes ya puestos: las piezas encajan solas pero el conjunto no parece de cubos.
@@ -397,7 +402,7 @@ Cada capa se puede saltar; el resultado simplemente será peor.
 | 1. Armazón | postes, vigas, cordel | forma, sin protección |
 | 2. Cerramiento | zarzo de varas, corteza, juncos, troncos | corta el viento |
 | 3. Revoco | barro + paja + agua (cob) | aislamiento térmico real |
-| 4. Cubierta | paja, corteza, tepe, juncos | estanqueidad a la lluvia |
+| 4. Cubierta | paja, corteza, tepe, juncos | estanqueidad a la lluvia (hecho: panel plano entre dos vigas) |
 | 5. Suelo | tarima de troncos, tepe, grava | evita humedad del suelo |
 
 ### Piezas de construcción
@@ -408,7 +413,7 @@ Cada capa se puede saltar; el resultado simplemente será peor.
 | Pared de zarzo | varas + cordel | ligera, poco aislante |
 | Pared de troncos | leña + muescas | pesada, muy aislante |
 | Panel de corteza | corteza + cordel | impermeable |
-| Tejado a un agua / dos aguas | vigas + paja / corteza | ángulo importa con lluvia y nieve |
+| Cubierta de corteza | corteza (entre dos vigas paralelas) | hecho — falta el ángulo (a un/dos aguas) |
 | Tarima elevada | troncos + cordel | evita el frío del suelo y las alimañas |
 | Puerta de zarzo | varas + bisagra de cuero | cierra el interior |
 | Ventana / tronera | marco + postigo | luz sin perder tanto calor |
