@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { SkeletonUtils } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { storage } from './core/storage.js';
 import { initPWA, initOrientationLock } from './core/pwa.js';
 import './styles.css';
@@ -347,7 +349,11 @@ const alisoMat = new THREE.MeshStandardMaterial({ map: leafCardTex, color: 0x93a
   alphaTest: ALFA_COPA, side: THREE.DoubleSide });
 const mossMat  = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x6f8f4a, roughness: 1 });
 const reedMat  = new THREE.MeshStandardMaterial({ map: leafTex, color: 0x9aa864, roughness: 1 });
+const reedHeadMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 1 });
 const flintMat = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.6, metalness: 0.15 });
+const setaCapMat  = new THREE.MeshStandardMaterial({ color: 0x9c5738, roughness: 0.9 });
+const setaCap2Mat = new THREE.MeshStandardMaterial({ color: 0xc9b48a, roughness: 0.9 });
+const setaGillMat = new THREE.MeshStandardMaterial({ color: 0xe9dfc4, roughness: 1 });
 
 /* fusiona geometrías para hacer un tronco con sus ramas en una sola malla */
 function mergeGeos(parts){
@@ -612,6 +618,84 @@ const gRock = new THREE.IcosahedronGeometry(0.34, 0);
 const gBush = new THREE.SphereGeometry(0.62, 8, 6);
 const gTuft = new THREE.ConeGeometry(0.34, 0.8, 5); gTuft.translate(0, 0.4, 0);
 const gLeaf = new THREE.CylinderGeometry(0.5, 0.55, 0.08, 8);
+
+/* geometrías unitarias reutilizables para junco, seta y ortiga (se instancian con escala propia) */
+const gReedBlade = new THREE.CylinderGeometry(0.22, 1, 1, 4); gReedBlade.translate(0, 0.5, 0);
+const gReedHead  = new THREE.CylinderGeometry(0.55, 0.4, 1, 6); gReedHead.translate(0, 0.5, 0);
+const gShroomStem = new THREE.CylinderGeometry(0.7, 1, 1, 6); gShroomStem.translate(0, 0.5, 0);
+const gShroomCap = new THREE.SphereGeometry(1, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55); gShroomCap.translate(0, 0.156, 0);
+const gShroomGill = new THREE.CylinderGeometry(0.94, 0.3, 0.12, 8); gShroomGill.translate(0, 0.94, 0);
+const gNettleLeaf = new THREE.ConeGeometry(1, 1, 4, 1); gNettleLeaf.translate(0, 0.5, 0);
+const gNettleStem = new THREE.CylinderGeometry(0.6, 1, 1, 4); gNettleStem.translate(0, 0.5, 0);
+
+function makeJunco(rng){
+  const g = new THREE.Group();
+  const n = 3 + Math.floor(rng() * 3);
+  for (let i = 0; i < n; i++){
+    const h = 1.3 + rng() * 1.1;
+    const blade = new THREE.Mesh(gReedBlade, reedMat);
+    blade.scale.set(0.014 + rng() * 0.01, h, 0.014 + rng() * 0.01);
+    blade.position.set((rng() - 0.5) * 0.16, 0, (rng() - 0.5) * 0.16);
+    blade.rotation.y = rng() * 6.28;
+    blade.rotation.x = (rng() - 0.5) * 0.32;
+    blade.rotation.z = (rng() - 0.5) * 0.32;
+    blade.castShadow = true;
+    g.add(blade);
+    if (rng() < 0.4){
+      const cabeza = new THREE.Mesh(gReedHead, reedHeadMat);
+      cabeza.scale.set(0.03, 0.2 + rng() * 0.07, 0.03);
+      cabeza.position.set(blade.position.x, h * 0.6, blade.position.z);
+      cabeza.rotation.copy(blade.rotation);
+      g.add(cabeza);
+    }
+  }
+  return g;
+}
+
+function makeSeta(rng){
+  const g = new THREE.Group();
+  const n = rng() < 0.35 ? 2 : 1;
+  const capMat = rng() < 0.5 ? setaCapMat : setaCap2Mat;
+  for (let i = 0; i < n; i++){
+    const s = 0.55 + rng() * 0.65;
+    const px = i ? (rng() - 0.5) * 0.16 : 0, pz = i ? (rng() - 0.5) * 0.16 : 0;
+    const stem = new THREE.Mesh(gShroomStem, setaGillMat);
+    stem.scale.set(0.05 * s, 0.11 * s, 0.05 * s);
+    stem.position.set(px, 0, pz); stem.castShadow = true;
+    g.add(stem);
+    const cap = new THREE.Mesh(gShroomCap, capMat);
+    cap.scale.setScalar(0.09 * s);
+    cap.position.set(px, 0.11 * s, pz); cap.castShadow = true;
+    g.add(cap);
+    const gill = new THREE.Mesh(gShroomGill, setaGillMat);
+    gill.scale.setScalar(0.09 * s);
+    gill.position.set(px, 0.11 * s, pz);
+    g.add(gill);
+  }
+  return g;
+}
+
+function makeOrtiga(rng){
+  const g = new THREE.Group();
+  const h = 0.3 + rng() * 0.24;
+  const tallo = new THREE.Mesh(gNettleStem, fiberMat);
+  tallo.scale.set(0.018, h, 0.018);
+  tallo.castShadow = true; g.add(tallo);
+  const pares = 2 + Math.floor(rng() * 3);
+  for (let i = 0; i < pares; i++){
+    const y = h * (0.3 + i * (0.65 / pares));
+    for (let s = -1; s <= 1; s += 2){
+      const hoja = new THREE.Mesh(gNettleLeaf, fiberMat);
+      hoja.scale.set(0.05 + rng() * 0.015, 0.14 + rng() * 0.05, 0.032);
+      hoja.position.y = y;
+      hoja.rotation.z = s * (Math.PI / 2 - 0.35 - rng() * 0.15);
+      hoja.rotation.y = rng() * 0.5;
+      hoja.castShadow = true;
+      g.add(hoja);
+    }
+  }
+  return g;
+}
 
 /* agua */
 const waterMat = new THREE.MeshStandardMaterial({ color: 0x24454b, transparent: true, opacity: 0.88,
@@ -1066,11 +1150,11 @@ function makeResource(kind, x, y, z, rng){
   else if (kind === 'palo'){ mesh = new THREE.Mesh(gStick, woodMat); mesh.rotation.y = rng() * 6.28; }
   else if (kind === 'piedra'){ mesh = new THREE.Mesh(gRock, rockMat); mesh.scale.setScalar(0.7 + rng() * 0.8); }
   else if (kind === 'yesca'){ mesh = new THREE.Mesh(gLeaf, dryMat); mesh.scale.set(1 + rng(), 1, 1 + rng()); }
-  else if (kind === 'fibra'){ mesh = new THREE.Mesh(gTuft, fiberMat); mesh.scale.setScalar(0.8 + rng() * 0.6); }
-  else if (kind === 'junco'){ mesh = new THREE.Mesh(gTuft, reedMat); mesh.scale.set(0.7, 2.4 + rng(), 0.7); }
+  else if (kind === 'fibra'){ mesh = makeOrtiga(rng); mesh.rotation.y = rng() * 6.28; }
+  else if (kind === 'junco'){ mesh = makeJunco(rng); mesh.rotation.y = rng() * 6.28; }
   else if (kind === 'musgo'){ mesh = new THREE.Mesh(gLeaf, mossMat); mesh.scale.set(1.2 + rng(), 0.6, 1.2 + rng()); }
   else if (kind === 'silex'){ mesh = new THREE.Mesh(gRock, flintMat); mesh.scale.setScalar(0.45 + rng() * 0.3); }
-  else if (kind === 'setas'){ mesh = new THREE.Mesh(gTuft, dryMat); mesh.scale.set(0.5, 0.35, 0.5); }
+  else if (kind === 'setas'){ mesh = makeSeta(rng); mesh.rotation.y = rng() * 6.28; }
   else if (kind === 'agujas'){ mesh = new THREE.Mesh(gLeaf, dryMat); mesh.scale.set(1.1 + rng(), 0.4, 1.1 + rng()); }
   else if (kind === 'maleza'){
     mesh = new THREE.Mesh(gBush, bushMat);
@@ -1144,34 +1228,93 @@ function findSpawn(){
 const fauna = [];
 const FAUNA = {
   conejo: { r: 0.22, vel: 5.2, huida: 16, carne: 1, piel: 1, tendon: 0, col: 0x8a7a63, biomas: ['claro', 'mixto', 'pinar'], cautela: 1.5 },
-  corzo:  { r: 0.55, vel: 6.4, huida: 26, carne: 4, piel: 1, tendon: 1, col: 0x8d6b45, biomas: ['frondoso', 'mixto', 'ribera'], cautela: 1.0 }
+  corzo:  { r: 0.55, vel: 6.4, huida: 26, carne: 4, piel: 1, tendon: 1, col: 0x8d6b45, biomas: ['frondoso', 'mixto', 'ribera'], cautela: 1.0 },
+  zorro:  { r: 0.30, vel: 6.6, huida: 22, carne: 2, piel: 1, tendon: 0, col: 0xb5501f,
+            biomas: ['claro', 'mixto', 'pinar', 'frondoso', 'ribera'], cautela: 1.8, modelo: true }
 };
-function makeAnimal(tipo){
+
+/* único modelo descargado del proyecto: zorro, cargado una vez y clonado por instancia
+   (ver public/models/CREDITS.md — el resto de la fauna es geometría procedural) */
+let foxAsset = null;
+new GLTFLoader().loadAsync(import.meta.env.BASE_URL + 'models/Fox.glb').then(gltf => {
+  gltf.scene.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  foxAsset = gltf;
+}).catch(() => { FAUNA.zorro.biomas = []; });   // sin red: simplemente no aparece
+
+function makeAnimalProc(tipo){
   const d = FAUNA[tipo], g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color: d.col, roughness: 1 });
+  const esCorzo = tipo === 'corzo';
   const cuerpo = new THREE.Mesh(new THREE.SphereGeometry(d.r, 8, 6), mat);
-  cuerpo.scale.set(1.5, 0.95, 1); cuerpo.position.y = d.r * (tipo === 'corzo' ? 2.1 : 1.4);
+  cuerpo.scale.set(1.5, 0.95, 1); cuerpo.position.y = d.r * (esCorzo ? 2.1 : 1.4);
   cuerpo.castShadow = true; g.add(cuerpo);
+  if (esCorzo){
+    const cuello = new THREE.Mesh(new THREE.CylinderGeometry(d.r * 0.32, d.r * 0.42, d.r * 1.15, 6), mat);
+    cuello.position.set(0, d.r * 2.35, -d.r * 1.25);
+    cuello.rotation.x = -0.75; cuello.castShadow = true; g.add(cuello);
+  }
   const cabeza = new THREE.Mesh(new THREE.SphereGeometry(d.r * 0.55, 7, 5), mat);
-  cabeza.position.set(0, d.r * (tipo === 'corzo' ? 2.9 : 1.9), -d.r * 1.5); cabeza.castShadow = true;
+  cabeza.position.set(0, d.r * (esCorzo ? 2.9 : 1.9), -d.r * 1.5); cabeza.castShadow = true;
   cabeza.name = 'cabeza'; g.add(cabeza);
+  const hocico = new THREE.Mesh(new THREE.ConeGeometry(d.r * 0.22, d.r * 0.4, 6), mat);
+  hocico.rotation.x = Math.PI / 2; hocico.position.set(0, -d.r * 0.05, -d.r * 0.5);
+  cabeza.add(hocico);
   for (let i = 0; i < 4; i++){
-    const p = new THREE.Mesh(new THREE.CylinderGeometry(d.r * 0.12, d.r * 0.1, d.r * (tipo === 'corzo' ? 2.0 : 1.1), 4), mat);
-    p.position.set((i % 2 ? 1 : -1) * d.r * 0.55, d.r * (tipo === 'corzo' ? 1.0 : 0.55), (i < 2 ? 1 : -1) * d.r * 0.8);
-    g.add(p);
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(d.r * 0.1, d.r * (esCorzo ? 0.08 : 0.12), d.r * (esCorzo ? 2.0 : 1.1), 4), mat);
+    p.position.set((i % 2 ? 1 : -1) * d.r * 0.55, d.r * (esCorzo ? 1.0 : 0.55), (i < 2 ? 1 : -1) * d.r * 0.8);
+    p.castShadow = true; g.add(p);
   }
   if (tipo === 'conejo'){
     for (let i = 0; i < 2; i++){
-      const o = new THREE.Mesh(new THREE.BoxGeometry(d.r * 0.16, d.r * 0.7, d.r * 0.1), mat);
-      o.position.set((i ? 1 : -1) * d.r * 0.22, d.r * 2.4, -d.r * 1.5); g.add(o);
+      const o = new THREE.Mesh(new THREE.CylinderGeometry(d.r * 0.05, d.r * 0.11, d.r * 0.85, 5), mat);
+      o.position.set((i ? 1 : -1) * d.r * 0.2, d.r * 0.42, 0); o.rotation.z = (i ? -1 : 1) * 0.14;
+      o.castShadow = true; cabeza.add(o);
     }
+    const cola = new THREE.Mesh(new THREE.SphereGeometry(d.r * 0.24, 6, 5), mat);
+    cola.position.set(0, d.r * 1.55, d.r * 1.05); g.add(cola);
+  } else if (esCorzo){
+    for (let i = 0; i < 2; i++){
+      const o = new THREE.Mesh(new THREE.ConeGeometry(d.r * 0.09, d.r * 0.5, 5), mat);
+      o.position.set((i ? 1 : -1) * d.r * 0.16, d.r * 0.5, -d.r * 0.15);
+      o.rotation.set(-0.3, 0, (i ? -1 : 1) * 0.35);
+      o.castShadow = true; cabeza.add(o);
+    }
+    const cola = new THREE.Mesh(new THREE.ConeGeometry(d.r * 0.12, d.r * 0.3, 5), mat);
+    cola.position.set(0, d.r * 2.1, d.r * 0.95); cola.rotation.x = Math.PI; g.add(cola);
   }
   return g;
+}
+
+function makeAnimal(tipo){
+  if (FAUNA[tipo].modelo){
+    const g = SkeletonUtils.clone(foxAsset.scene);
+    g.scale.setScalar(0.0093);
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    const mixer = new THREE.AnimationMixer(g);
+    const clip = name => THREE.AnimationClip.findByName(foxAsset.animations, name);
+    g.userData.mixer = mixer;
+    g.userData.actions = {
+      idle: mixer.clipAction(clip('Survey')),
+      walk: mixer.clipAction(clip('Walk')),
+      run: mixer.clipAction(clip('Run'))
+    };
+    g.userData.actions.idle.play();
+    g.userData.anim = 'idle';
+    return g;
+  }
+  return makeAnimalProc(tipo);
+}
+function playAnim(a, name){
+  const acts = a.mesh.userData.actions; if (!acts || a.mesh.userData.anim === name) return;
+  acts[a.mesh.userData.anim].fadeOut(0.25);
+  acts[name].reset().fadeIn(0.25).play();
+  a.mesh.userData.anim = name;
 }
 function spawnFauna(ci, cj, rng){
   const b = biomeAt(ci * CHUNK + 48, cj * CHUNK + 48);
   Object.keys(FAUNA).forEach(tipo => {
     if (FAUNA[tipo].biomas.indexOf(b) < 0) return;
+    if (FAUNA[tipo].modelo && !foxAsset) return;   // modelo aún cargando
     const n = rng() < 0.55 ? 1 : 0;
     for (let k = 0; k < n; k++){
       const x = ci * CHUNK + rng() * CHUNK, z = cj * CHUNK + rng() * CHUNK;
@@ -1188,6 +1331,7 @@ function spawnFauna(ci, cj, rng){
 function updateFauna(dt){
   for (let i = fauna.length - 1; i >= 0; i--){
     const a = fauna[i], d = FAUNA[a.tipo];
+    if (a.mesh.userData.mixer) a.mesh.userData.mixer.update(dt);
     const dx = player.pos.x - a.x, dz = player.pos.z - a.z;
     const dist = Math.hypot(dx, dz);
     if (dist > 130){ a.mesh.visible = false; continue; }
@@ -1225,6 +1369,7 @@ function updateFauna(dt){
     }
     a.mesh.position.set(a.x, a.y, a.z);
     a.mesh.rotation.y = -a.dir + Math.PI / 2;
+    if (a.mesh.userData.actions) playAnim(a, a.estado === 'huye' ? 'run' : v > 0 ? 'walk' : 'idle');
     // la cabeza se levanta al estar en alerta
     const cab = a.mesh.getObjectByName('cabeza');
     if (cab) cab.position.y += ((a.estado === 'pasta' ? d.r * (a.tipo === 'corzo' ? 2.4 : 1.6)
@@ -1249,10 +1394,17 @@ const llamaMat = new THREE.MeshBasicMaterial({ color: 0xffa347 });
 function makeTool(kind){
   const g = new THREE.Group();
   if (kind === 'cuchillo'){
-    const hoja = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.035, 0.22), metalMat);
-    hoja.position.z = -0.14; g.add(hoja);
-    const mango = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.12, 6), cueroMat);
-    mango.rotation.x = Math.PI / 2; g.add(mango);
+    const bladeGeo = new THREE.ConeGeometry(0.028, 0.2, 4, 1);
+    bladeGeo.rotateX(-Math.PI / 2);
+    const hoja = new THREE.Mesh(bladeGeo, metalMat);
+    hoja.scale.set(0.4, 1, 1);
+    hoja.position.z = -0.135; g.add(hoja);
+    const guarda = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.016, 0.05), metalMat);
+    guarda.position.z = -0.025; g.add(guarda);
+    const mango = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.021, 0.1, 6), cueroMat);
+    mango.rotation.x = Math.PI / 2; mango.position.z = 0.03; g.add(mango);
+    const pomo = new THREE.Mesh(new THREE.SphereGeometry(0.019, 6, 5), metalMat);
+    pomo.position.z = 0.083; g.add(pomo);
   } else if (kind === 'hacha'){
     const mango = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 0.42, 6), woodMat);
     mango.rotation.x = Math.PI / 2.6; g.add(mango);

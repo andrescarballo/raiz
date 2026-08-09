@@ -18,7 +18,7 @@ Sirve como base para decidir qué se implementa y en qué orden. No todo entra: 
 | Mochila con capacidad | hecho |
 | Manos, equipar, barra rápida, herramienta visible | hecho |
 | Nadar, vadear, agacharse, ruido propio | hecho |
-| Fauna (conejo, corzo) con alerta y huida; caza a lanza; despiece | hecho |
+| Fauna (conejo, corzo, zorro) con alerta y huida; caza a lanza; despiece | hecho |
 | Pesca a lanza, cocinar carne y pescado, secadero, cecina | hecho |
 | Hierba alta y baja, maleza, troncos caídos, tocones huecos, pedruscos | hecho |
 | Audio sintetizado: viento, lluvia, fuego, arroyo, pasos, aves | hecho |
@@ -291,7 +291,7 @@ Estados: crudo → cocinado → ahumado → rancio → podrido. Comer crudo o po
 | Conejo | huye al detectarte; activo al alba y ocaso | excrementos, senderos en la hierba |
 | Corzo | muy asustadizo, olfato; sigue el viento | huellas hendidas, ramoneo |
 | Jabalí | agresivo si acorralado | hozaduras, barro en troncos |
-| Zorro | roba comida no protegida | huellas, restos |
+| Zorro | implementado: pasta/alerta/huida como el resto, cazable; robar comida no protegida sigue pendiente | huellas, restos |
 | Lobo (raro) | manada, evita el fuego | aullidos de noche |
 | Aves | alarma al acercarte (delatan tu posición) | vuelo repentino |
 | Insectos | molestan sin humo | zumbido |
