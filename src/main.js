@@ -401,16 +401,24 @@ function makeTrunk(rBase, rTop, nb, y0, len, ang, y1, merma){
 
 /* viento compartido: hierba y copas se mueven */
 const windU = { value: 0 }, windAmp = { value: 1 };
-/* fade: la mata encoge hacia el borde del césped cercano, así no se ve el corte */
+/* fade: 'out' encoge la mata hacia el borde del césped cercano, así no se ve el
+   corte; 'in' es lo contrario —encoge lo que cae DENTRO del radio— y es lo que usa
+   la hierba de chunk: donde ya pinta el césped denso no hace falta redibujar encima,
+   así que se anula ahí y solo aparece pasado el radio. Las dos leen el mismo centro
+   y radio porque son la misma alfombra la que manda. */
 function addSway(mat, amp, fade){
   mat.onBeforeCompile = sh => {
     sh.uniforms.uTime = windU; sh.uniforms.uWind = windAmp; sh.uniforms.uAmp = { value: amp };
     let corte = '';
     if (fade){
       sh.uniforms.uCen = cespedCen; sh.uniforms.uRad = cespedRad;
+      const k = fade === 'in'
+        ? 'smoothstep(uRad * 0.55, uRad * 0.95, dCesp)'
+        : '1.0 - smoothstep(uRad * 0.66, uRad * 0.96, dCesp)';
       corte = `
         #ifdef USE_INSTANCING
-          transformed.y *= 1.0 - smoothstep(uRad * 0.66, uRad * 0.96, length(instanceMatrix[3].xz - uCen.xz));
+          float dCesp = length(instanceMatrix[3].xz - uCen.xz);
+          transformed.y *= ${k};
         #endif`;
     }
     sh.vertexShader = 'uniform float uTime;\nuniform float uWind;\nuniform float uAmp;\n' +
@@ -424,7 +432,7 @@ function addSway(mat, amp, fade){
         float sway = (sin(uTime * 1.5 + ph) + 0.4 * sin(uTime * 3.1 + ph * 1.7)) * uAmp * uWind * max(transformed.y, 0.0);
         transformed.x += sway; transformed.z += sway * 0.55;`);
   };
-  mat.customProgramCacheKey = () => 'sway' + amp + (fade ? 'f' : '');
+  mat.customProgramCacheKey = () => 'sway' + amp + (fade ? 'f' + fade : '');
 }
 [pineMat, oakMat2, abetoMat, alisoMat].forEach(m => addSway(m, 0.010));
 
@@ -457,7 +465,11 @@ grassTex.anisotropy = maxAniso;
 // el color por instancia y el fragment shader lo ignora.
 const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, alphaTest: 0.42, transparent: false,
   side: THREE.DoubleSide, roughness: 1, color: 0xffffff, vertexColors: true });
-addSway(grassMat, 0.075);
+/* 'in': se anula bajo el radio del césped cercano —ahí ya hay una alfombra
+   densa— y solo se dibuja pasado ese radio. Sin esto, cada mata de chunk que cae
+   cerca del jugador se pinta dos veces (la suya y la del césped) por nada:
+   el mismo trozo de suelo pagando el doble de overdraw. */
+addSway(grassMat, 0.075, 'in');
 function crossPlanes(w, h){
   const a = new THREE.PlaneGeometry(w, h); a.translate(0, h / 2, 0);
   const b = a.clone(); b.rotateY(Math.PI / 2);
@@ -485,6 +497,19 @@ function starPlanes(n, w, h){
 const grassGeo = conColorBlanco(crossPlanes(0.55, 0.7));
 /* capa lejana: rala a propósito, el suelo cercano lo cubre el césped de §5c */
 const GRASS_DENS = { claro: 780, mixto: 420, frondoso: 320, pinar: 240, ribera: 560, roquedo: 45 };
+/* No hay textura distinta por bioma —eso duplicaría materiales y draw calls—,
+   así que el "tipo" de hierba sale de teñir y recortar la misma malla: alta y
+   verde en el prado, rala y grisácea en el roquedo, juncosa y azulada en la
+   ribera, corta y de sombra bajo el dosel. verde/seco son los extremos del tinte
+   por instancia (ya existía); altoK escala la altura de la mata entera. */
+const GRASS_PALETTE = {
+  claro:    { verde: [0.42, 0.55, 0.28], seco: [0.74, 0.64, 0.36], altoK: 1.05 },
+  mixto:    { verde: [0.36, 0.48, 0.27], seco: [0.68, 0.60, 0.37], altoK: 0.92 },
+  frondoso: { verde: [0.28, 0.40, 0.22], seco: [0.58, 0.52, 0.34], altoK: 0.82 },
+  pinar:    { verde: [0.34, 0.37, 0.24], seco: [0.55, 0.47, 0.30], altoK: 0.68 },
+  ribera:   { verde: [0.28, 0.50, 0.32], seco: [0.60, 0.58, 0.34], altoK: 1.18 },
+  roquedo:  { verde: [0.42, 0.40, 0.33], seco: [0.54, 0.49, 0.40], altoK: 0.5 }
+};
 
 /* Copas de planos recortados.
    Las normales reales de un montón de planos sueltos apuntan a cualquier parte y
@@ -696,16 +721,20 @@ function construirCesped(){
 }
 
 /* El bioma y la pendiente se evalúan una vez por celda (4 esquinas) y se interpolan:
-   por brizna solo queda un heightAt, que es lo que hace esto viable */
+   por brizna no queda ni un heightAt ni un biomeAt — la altura sale de interpolar
+   las 4 esquinas (el terreno apenas se curva en 4 m) y el "tipo" de mata, de la
+   esquina más cercana entre las 4 ya evaluadas. Eso es lo que hace viable rellenar
+   una celda entera (hasta 150 matas) sin que se note como un tirón al cruzarla. */
 function llenarCelda(wi, wj, slot){
   const im = cesped.mesh, K = cesped.K, lado = cesped.lado;
   const x0 = wi * lado, z0 = wj * lado;
-  const h = [], p = [];
+  const h = [], p = [], bs = [];
   for (let e = 0; e < 4; e++){
     const ex = x0 + (e & 1) * lado, ez = z0 + (e >> 1) * lado;
     const y = heightAt(ex, ez);
     h.push(y);
     const b = biomeAt(ex, ez, y);
+    bs.push(b);
     // el dosel cerrado no deja prender la hierba, pero clarea, no arrasa
     p.push((CESPED_DENS[b] || 0.5) * (1 - 0.25 * clamp(BIOME[b].dens * (treeNoise(ex, ez) * 0.6 + 0.4) * 1.35, 0, 1)));
   }
@@ -720,19 +749,20 @@ function llenarCelda(wi, wj, slot){
     const x = x0 + u * lado, z = z0 + v * lado;
     const prob = lerp(lerp(p[0], p[1], u), lerp(p[2], p[3], u), v) * kPend;
     if (r1 >= prob){ im.setMatrixAt(base + k, CERO); continue; }
-    const y = heightAt(x, z);
+    const y = lerp(lerp(h[0], h[1], u), lerp(h[2], h[3], u), v);
     if (y < WATER + 0.12 || y > 44){ im.setMatrixAt(base + k, CERO); continue; }
+    const pal = GRASS_PALETTE[bs[(u < 0.5 ? 0 : 1) | (v < 0.5 ? 0 : 2)]] || GRASS_PALETTE.mixto;
     const seco = r2;                                       // reparto verde/seco dentro de la mata
     const s = 0.7 + r2 * 0.85;
     E.set((r3 - 0.5) * 0.28, r3 * 6.28, (r1 / prob - 0.5) * 0.28);   // caída ligera, no todas rectas
     Q.setFromEuler(E);
     V.set(x, y - 0.05, z);
-    S.set(s, s * (0.75 + r3 * 0.6), s);
+    S.set(s, s * (0.75 + r3 * 0.6) * pal.altoK, s);
     im.setMatrixAt(base + k, M.compose(V, Q, S));
-    // multiplica la textura casi neutra: verde de sotobosque a paja seca.
-    // Apagado a propósito, que el follaje de los árboles también lo está.
-    if (seco > 0.8) C.setRGB(0.74, 0.66, 0.44);
-    else C.setRGB(0.40 + seco * 0.24, 0.50 + seco * 0.18, 0.30 + seco * 0.12);
+    // multiplica la textura casi neutra: verde de sotobosque a paja seca, con los
+    // tonos de la paleta del bioma más cercano — así una pradera y un roquedo se
+    // ven distintos aunque compartan malla y material.
+    C.setRGB(lerp(pal.verde[0], pal.seco[0], seco), lerp(pal.verde[1], pal.seco[1], seco), lerp(pal.verde[2], pal.seco[2], seco));
     im.setColorAt(base + k, C);
   }
 }
@@ -788,6 +818,21 @@ function addStump(t, grp){
   const tocon = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.45, 7), woodMat);
   tocon.position.set(t.x, t.y + 0.2, t.z); tocon.castShadow = true;
   (grp || t.grp || scene).add(tocon);
+}
+
+/* Altura del suelo por interpolación bilineal de la rejilla del terreno que ya se
+   calculó para el chunk (un heightAt por vértice, cada 3 m). Recalcular heightAt
+   por cada brizna de hierba —miles por chunk— es tirar ruido fBm que ya está
+   resuelto a un paso más fino del que la vista puede distinguir. lx, lz son
+   coordenadas locales al chunk (x - ox, z - oz). */
+function sampleGroundH(pos, lx, lz){
+  const step = CHUNK / SEG, w = SEG + 1;
+  const fx = clamp((lx + CHUNK / 2) / step, 0, SEG), fz = clamp((lz + CHUNK / 2) / step, 0, SEG);
+  const ix = Math.min(SEG - 1, fx | 0), iz = Math.min(SEG - 1, fz | 0);
+  const tx = fx - ix, tz = fz - iz;
+  const h00 = pos.getY(iz * w + ix), h10 = pos.getY(iz * w + ix + 1);
+  const h01 = pos.getY((iz + 1) * w + ix), h11 = pos.getY((iz + 1) * w + ix + 1);
+  return lerp(lerp(h00, h10, tx), lerp(h01, h11, tx), tz);
 }
 
 function buildChunk(ci, cj){
@@ -871,54 +916,53 @@ function buildChunk(ci, cj){
     grp.add(trunkIM); grp.add(folIM);
   });
 
-  /* hierba alta y matas secas */
-  const gd = Math.round((GRASS_DENS[biomeAt(ci * CHUNK + 48, cj * CHUNK + 48)] || 200) * (isTouch ? 0.45 : 1));
+  /* hierba alta y matas secas: una sola InstancedMesh por chunk —capa alta y capa
+     baja fundidas— en vez de dos, y el tono/alto sale de la paleta del bioma del
+     chunk (§ GRASS_PALETTE), no de un heightAt/biomeAt por brizna: la altura la da
+     sampleGroundH sobre la rejilla que ya se calculó arriba, casi gratis. */
+  const farBiome = biomeAt(ci * CHUNK + 48, cj * CHUNK + 48);
+  const pal = GRASS_PALETTE[farBiome] || GRASS_PALETTE.mixto;
+  const gd = Math.round((GRASS_DENS[farBiome] || 200) * (isTouch ? 0.45 : 1));
   if (gd > 0){
     const puestas = [];
     for (let n = 0; n < gd; n++){
       const x = ci * CHUNK + rng() * CHUNK, z = cj * CHUNK + rng() * CHUNK;
-      const y = heightAt(x, z);
+      const y = sampleGroundH(pos, x - ox, z - oz);
       if (y < WATER + 0.15 || y > 44) continue;
       puestas.push({ x, y, z, s: 0.7 + rng() * 0.9, r: rng() * 6.28, seco: rng() });
     }
-    if (puestas.length){
-      const gm = new THREE.InstancedMesh(grassGeo, grassMat, puestas.length);
+    // capa baja: mata el suelo pelado a media distancia, más corta y más apagada que la alta
+    const nb = Math.round(puestas.length * (isTouch ? 0.6 : 1.0));
+    const total = puestas.length + nb;
+    if (total){
+      const gm = new THREE.InstancedMesh(grassGeo, grassMat, total);
       gm.receiveShadow = true;
       const cc = new THREE.Color();
       puestas.forEach((t, k) => {
         Q2.setFromAxisAngle(AXIS2, t.r);
-        V2.set(t.x, t.y - 0.05, t.z); S2.set(t.s, t.s * (0.8 + t.seco * 0.9), t.s);
+        V2.set(t.x, t.y - 0.05, t.z); S2.set(t.s, t.s * (0.8 + t.seco * 0.9) * pal.altoK, t.s);
         gm.setMatrixAt(k, M2.compose(V2, Q2, S2));
         if (gm.setColorAt){
-          const seco = t.seco > 0.72;
-          cc.setRGB(seco ? 0.72 : 0.46 + t.seco * 0.2, seco ? 0.62 : 0.58, seco ? 0.36 : 0.30);
+          cc.setRGB(lerp(pal.verde[0], pal.seco[0], t.seco), lerp(pal.verde[1], pal.seco[1], t.seco), lerp(pal.verde[2], pal.seco[2], t.seco));
           gm.setColorAt(k, cc);
         }
       });
+      for (let n = 0; n < nb; n++){
+        const x = ci * CHUNK + rng() * CHUNK, z = cj * CHUNK + rng() * CHUNK;
+        const y = sampleGroundH(pos, x - ox, z - oz);
+        Q2.setFromAxisAngle(AXIS2, rng() * 6.28);
+        const e = 0.34 + rng() * 0.3, sec = rng() * 0.7 + 0.2;
+        V2.set(x, y - 0.04, z); S2.set(e * 1.5, e * pal.altoK, e * 1.5);
+        const k = puestas.length + n;
+        gm.setMatrixAt(k, M2.compose(V2, Q2, S2));
+        if (gm.setColorAt){
+          cc.setRGB(lerp(pal.verde[0], pal.seco[0], sec), lerp(pal.verde[1], pal.seco[1], sec), lerp(pal.verde[2], pal.seco[2], sec));
+          gm.setColorAt(k, cc);
+        }
+      }
       gm.instanceMatrix.needsUpdate = true;
       if (gm.instanceColor) gm.instanceColor.needsUpdate = true;
       grp.add(gm);
-
-      // capa baja: mata el suelo pelado a media distancia (de cerca ya lo hace el césped de §5c)
-      const nb = Math.round(puestas.length * (isTouch ? 0.6 : 1.0));
-      const bm = new THREE.InstancedMesh(grassGeo, grassMat, nb);
-      const cb = new THREE.Color();
-      for (let n = 0; n < nb; n++){
-        const x = ci * CHUNK + rng() * CHUNK, z = cj * CHUNK + rng() * CHUNK;
-        const y = heightAt(x, z);
-        Q2.setFromAxisAngle(AXIS2, rng() * 6.28);
-        const e = 0.34 + rng() * 0.3;
-        V2.set(x, y - 0.04, z); S2.set(e * 1.5, e, e * 1.5);
-        bm.setMatrixAt(n, M2.compose(V2, Q2, S2));
-        if (bm.setColorAt){
-          const sec = rng();
-          cb.setRGB(0.40 + sec * 0.3, 0.46 + sec * 0.12, 0.24 + sec * 0.1);
-          bm.setColorAt(n, cb);
-        }
-      }
-      bm.instanceMatrix.needsUpdate = true;
-      if (bm.instanceColor) bm.instanceColor.needsUpdate = true;
-      grp.add(bm);
     }
   }
 
